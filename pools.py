@@ -12,7 +12,8 @@ PLANTS = np.array(pd.read_csv('plants.csv').iloc[:, 1:].to_records(index=False),
         ('sun_prod', 'u4'),
         ('cost', 'u4'),
         ('seed_recharge', 'f4'),
-        ('slow_dur', 'f4')
+        ('slow_dur', 'f4'),
+        ('blast_rad', 'u4')
         ]
     )
 
@@ -38,6 +39,7 @@ class PlantGrid:
                 ('damage', 'f4'),
                 ('sun_prod', 'u4'),
                 ('slow_dur', 'f4'),
+                ('blast_radius', 'f4'),
                 ('timer', 'f4')
             ]
         )
@@ -63,6 +65,7 @@ class PlantGrid:
             pstate['damage'],
             pstate['sun_prod'],
             pstate['slow_dur'],
+            pstate['blast_rad'],
             pstate['cooldown'] * init_cooldown_discount  # discounted cooldown first time
         )
         return True

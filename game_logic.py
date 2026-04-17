@@ -81,16 +81,18 @@ class LevelConfig:
 class PvZGame:
     def __init__(self, lvlconfig: LevelConfig, init_sun: int = 50, seed_timer_init: float = 10.0):
         self.lvlconfig = lvlconfig
+        self.n_rows = self.lvlconfig.n_rows
+        self.n_cols = self.lvlconfig.n_cols
 
         self.sun: int = init_sun
         self.seed_timers_init = np.maximum(PLANTS['seed_recharge'] - seed_timer_init, 0)
-        self.plants = PlantGrid(self.lvlconfig.n_rows, self.lvlconfig.n_cols)
-        self.zombies = ZombiePool(self.lvlconfig.n_rows, self.lvlconfig.n_cols)
-        self.lawn_mowers = np.full(self.lvlconfig.n_rows, self.lvlconfig.lawn_mowers)
+        self.plants = PlantGrid(self.n_rows, self.n_cols)
+        self.zombies = ZombiePool(self.n_rows, self.n_cols)
+        self.lawn_mowers = np.full(self.n_rows, self.lvlconfig.lawn_mowers)
 
         self.p = self.plants.state
         self.z = self.zombies.state
-        self.row_vect = np.arange(self.lvlconfig.n_rows).reshape(-1, 1)
+        self.row_vect = np.arange(self.n_rows).reshape(-1, 1)
         self.reset()
 
     def reset(self):
@@ -175,7 +177,7 @@ class PvZGame:
 
         # Immobilize zombies
         int_xs = self.z['x'].astype(np.uint32)
-        is_valid = (self.z['type'] > 0) & (int_xs < self.lvlconfig.n_cols)
+        is_valid = (self.z['type'] > 0) & (int_xs < self.n_cols)
         is_facing_plant = is_valid & (self.p[self.row_vect, int_xs]['type'] > 0)        
         is_running_pole = (self.z['type'] == Z.POLE_VAULT) & (self.z['special_state'] == 0)
         is_eating = is_facing_plant & ~is_running_pole & (self.z['x'] - int_xs < EATING_DISTANCE_THRESHOLD)
@@ -197,10 +199,20 @@ class PvZGame:
         self.p['timer'] -= dt
         acting = self.p['timer'] <= 0
         did_act = np.zeros(self.p.shape, dtype=np.bool_)
+        damage_array = np.zeros(self.z.shape, dtype=np.float32)
+
+        # Bombs blow up
+        to_blow_up = acting & (self.p['blast_rad'] > 0)
+        for pidx in np.argwhere(to_blow_up):  # TODO: Vectorize
+            row, pcol = pidx
+            blast_rad = self.p[pidx]['blast_rad']
+            zrows = slice(max(row - blast_rad, 0), min(row + blast_rad, self.n_cols) + 1)
+            valid_target = (self.z[zrows]['type'] > 0) & (np.abs(self.z[zrows]['x'] - pcol) < (blast_rad + 0.5))
+            damage_array[zrows][valid_target] += self.p[pidx]['damage']
+        self.plants.remove(to_blow_up)
 
         # Peashooter attack
-        attacking = acting & (self.p['damage'] > 0)
-        damage_array = np.zeros(self.z.shape, dtype=np.float32)
+        attacking = acting & (self.p['damage'] > 0) & (self.p['blast_rad'] == 0)
         for pidx in np.argwhere(attacking):  # TODO: Vectorize
             row, pcol = pidx 
             valid_target = (self.z[row]['type'] > 0) & (self.z[row]['x'] > pcol)
@@ -211,13 +223,13 @@ class PvZGame:
                 if self.z[zidx]['shield_health'] == 0:
                     self.z[zidx]['slow_timer'] = np.maximum(self.z[zidx]['slow_timer'], self.p[pidx]['slow_dur'])
                 did_act[pidx] = True
-        self.zombies.get_damage(damage_array)
 
         # Sun production
         self.sun += np.sum(self.p['sun_prod'][acting])
         did_act |= (self.p['sun_prod'] > 0) & acting
 
         self.p['timer'] += np.where(did_act, self.p['cooldown'], 0)
+        self.zombies.get_damage(damage_array)
         return damage_array.sum()
         
     def place_plant(self, plant_type: int, row: int, col: int) -> tuple[bool, int]:
@@ -241,7 +253,7 @@ class PvZGame:
         return False, 0
 
     def shovel_plant(self, row: int, col: int) -> bool:
-        if row < 0 or row >= self.lvlconfig.n_rows or col < 0 or col >= self.lvlconfig.n_cols:
+        if row < 0 or row >= self.n_rows or col < 0 or col >= self.n_cols:
             print("Out of bounds")
             return False
         

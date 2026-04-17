@@ -1,53 +1,59 @@
 
-# Plants vs Zombies Reinforcement Learning
+# Plants vs. Zombies RL
 
-A Python implementation of Plants vs Zombies game logic with support for reinforcement learning agents.
+A reinforcement learning implementation of Plants vs. Zombies game logic in Python.
 
 ## Overview
 
-This project simulates the core game mechanics of Plants vs Zombies, including:
-- **Plant placement and abilities** (damage, sun production, crowd control)
-- **Zombie spawning and movement** (with special abilities like pole vaulting)
-- **Resource management** (sun collection and seed cooldowns)
-- **Wave-based progression** with configurable difficulty scaling
+This project provides a complete game simulation engine for Plants vs. Zombies, designed for reinforcement learning research. It includes plant placement, zombie spawning, combat mechanics, and level progression.
+
+## Features
+
+- **Plant System**: 10 plant types with unique abilities (damage, sun production, crowd control)
+- **Zombie Types**: 8 zombie variants with different stats and special behaviors
+- **Wave-based Spawning**: Configurable difficulty progression with flag waves
+- **Combat Mechanics**: 
+    - Plant attacks with targeting
+    - Zombie special abilities (pole vault, newspaper shield, etc.)
+    - Slow effects and shield systems
+    - Lawn mower defense
+- **Level Configuration**: Customizable difficulty, wave timing, and zombie distributions
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
 
 ## Project Structure
 
-- `game_logic.py` - Core game simulation and update loop
-- `pools.py` - Plant and zombie state management
-- `plants.csv` - Plant stats (health, cooldown, damage, cost, etc.)
-- `zombies.csv` - Zombie stats (health, speed, shield, special abilities)
-
-## Key Classes
-
-### `PvZGame`
-Main game controller handling:
-- Plant placement and removal
-- Zombie spawning and wave management
-- Game state updates and win/lose conditions
-
-### `LevelConfig`
-Configurable level parameters:
-- Wave composition and difficulty ramping
-- Sun generation rates
-- Lawn mower availability
-
-### `PlantGrid` & `ZombiePool`
-State management for entities using NumPy arrays for efficient vectorized operations.
+- `game_logic.py` - Main game engine (`PvZGame` class)
+- `pools.py` - Plant and zombie data structures
+- `plants.csv` - Plant stats configuration
+- `zombies.csv` - Zombie stats configuration
 
 ## Usage
 
 ```python
-config = LevelConfig(n_flags=5, p_init=np.array([...]), p_fin=np.array([...]))
+from game_logic import PvZGame, LevelConfig
+import numpy as np
+
+# Create level configuration
+config = LevelConfig(
+        n_flags=3,
+        p_init=np.array([1.0, 0.5, 0.3]),  # Initial zombie distribution
+        p_fin=np.array([0.2, 1.0, 1.0])    # Final zombie distribution
+)
+
+# Initialize game
 game = PvZGame(config)
-game.place_plant(plant_type=1, row=2, col=3)
-step_info = game.update(dt=0.016)
+
+# Simulate gameplay
+game.place_plant(plant_type=1, row=0, col=2)
+info = game.update(dt=0.1)
 ```
 
-## Features
+## Dependencies
 
-- Vectorized NumPy operations for performance
-- Configurable plant and zombie stats via CSV
-- Lawn mower defensive mechanic
-- Special zombie behaviors (pole vault, newspaper shield)
-- Extensible for RL training environments
+- numpy >= 2.4.4
+- pandas >= 3.0.2
