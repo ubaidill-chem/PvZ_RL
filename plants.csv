@@ -1,0 +1,9 @@
+name,type,health,cooldown,damage,sun_prod,cost,seed_recharge,slow_duration
+peashooter,1,300.0,1.425,20.0,0,100,7.5,0.0
+sunflower,2,300.0,24.25,0.0,50,50,7.5,0.0
+wallnut,3,4000.0,NaN,0.0,0,50,30.0,0.0
+snowpea,4,300.0,1.425,20.0,0,175,7.5,10.0
+repeater,5,300.0,1.425,40.0,0,200,7.5,0.0
+tallnut,6,8000.0,NaN,0.0,0,125,30.0,0.0
+gatlingpea,7,300.0,1.425,80.0,0,400,7.5,0.0
+twinsun,8,300.0,24.25,0.0,100,125,7.5,0.0
