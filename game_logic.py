@@ -114,13 +114,13 @@ class PvZGame:
 
         self.seed_timers = np.maximum(self.seed_timers - dt, 0)
         self.update_sky_sun(dt)
-        damage_dealt = self.update_plants(dt)
+        damage_array = self.update_plants(dt)
         is_win = self.update_spawn(dt)
         is_lose = self.update_zombies(dt)
         
         return StepInfo(
-            lvl_outcome = 1 if is_win else (-1 if is_lose else 0),
-            damage_dealt = damage_dealt,
+            lvl_outcome = 1 if is_win else (-1 if is_lose else 0),  # TODO: Replace with Enum
+            damage_dealt = damage_array.sum(),
             sun_gained = self.sun - sun_before,
             zombies_killed = int(zombies_before - (self.z['type'] > 0).sum()),
             plants_lost = int(plants_before  - (self.p['type'] > 0).sum()),
@@ -194,7 +194,7 @@ class PvZGame:
         np.add.at(damage_to_plants, (rows, int_xs[is_eating]), damage_from_zomb[is_eating])
         self.plants.get_damage(damage_to_plants)
 
-    def update_plants(self, dt: float) -> float:
+    def update_plants(self, dt: float) -> np.ndarray:
         self.p['timer'] -= dt
         acting = self.p['timer'] <= 0
         did_act = np.zeros(self.p.shape, dtype=np.bool_)
@@ -203,13 +203,14 @@ class PvZGame:
         # Peashooter attack
         single_hits = acting & (self.p['atk_mode'] == 0)
         for row, pcol in np.argwhere(single_hits):  # TODO: Vectorize
-            valid_target = (self.z[row]['type'] > 0) & (self.z[row]['x'] > pcol)
+            ptype = self.p[row, pcol]['type']
+            atk_limit = PLANTS[ptype - 1]['atk_limit'] or np.inf
+            valid_target = (self.z[row]['type'] > 0) & (0 < self.z[row]['x'] - pcol < atk_limit)
             if valid_target.any():
-                ptype = self.p[row, pcol]['type']
                 to_hit = np.argmin(np.where(valid_target, self.z[row]['x'], np.inf))
                 damage_array[row, to_hit] += PLANTS[ptype - 1]['damage']
                 if self.z[row, to_hit]['shield_health'] == 0:
-                    self.z[row, to_hit]['slow_timer'] = np.maximum(self.z[row, to_hit]['slow_timer'], PLANTS[ptype - 1]['slow_dur'])
+                    self.z[row, to_hit]['slow_timer'] = max(self.z[row, to_hit]['slow_timer'], PLANTS[ptype - 1]['slow_dur'])
                 did_act[row, pcol] = True
 
         # AoE attack
@@ -230,7 +231,7 @@ class PvZGame:
         self.p['timer'] += np.where(did_act, self.p['cooldown'], 0)  # Reset timers
         self.plants.remove(did_act & (self.p['instant'] | self.p['single_use']))  # Remove single-use plants
         self.zombies.get_damage(damage_array)  # Damage zombies
-        return damage_array.sum()
+        return damage_array
         
     def place_plant(self, plant_type: int, row: int, col: int) -> tuple[bool, int]:
         if plant_type <= 0 or plant_type > PLANTS.size:
