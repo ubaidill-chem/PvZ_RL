@@ -9,11 +9,15 @@ PLANTS = np.array(pd.read_csv('plants.csv').iloc[:, 1:].to_records(index=False),
         ('health', 'f4'),
         ('cooldown', 'f4'),
         ('damage', 'f4'),
-        ('sun_prod', 'u4'),
         ('cost', 'u4'),
         ('seed_recharge', 'f4'),
+        ('sun_prod', 'u4'),
+        ('atk_mode', 'u4'),  # 0 = Single-hit, 1 = Area-of-Effect, -1 = No attack
+        ('aoe_rad', 'u4'),
+        ('instant', 'b1'),
+        ('single_use', 'b1'),
         ('slow_dur', 'f4'),
-        ('blast_rad', 'u4')
+        ('atk_range', 'u4'),
         ]
     )
 
@@ -23,7 +27,7 @@ ZOMBIES = np.array(pd.read_csv('zombies.csv').iloc[:, 1:].to_records(index=False
         ('shield_health', 'f4'),
         ('speed', 'f4'),
         ('damage', 'f4'),
-        ('speed_special', 'f4'),
+        ('special_speed', 'f4'),
         ]
     )
 
@@ -36,10 +40,10 @@ class PlantGrid:
                 ('type', 'u4'),
                 ('health', 'f4'),
                 ('cooldown', 'f4'),
-                ('damage', 'f4'),
                 ('sun_prod', 'u4'),
-                ('slow_dur', 'f4'),
-                ('blast_radius', 'f4'),
+                ('atk_mode', 'u4'),
+                ('instant', 'b1'),
+                ('single_use', 'b1'),
                 ('timer', 'f4')
             ]
         )
@@ -62,10 +66,10 @@ class PlantGrid:
             ptype,
             pstate['health'],
             pstate['cooldown'],
-            pstate['damage'],
             pstate['sun_prod'],
-            pstate['slow_dur'],
-            pstate['blast_rad'],
+            pstate['atk_mode'],
+            pstate['instant'],
+            pstate['single_use'],
             pstate['cooldown'] * init_cooldown_discount  # discounted cooldown first time
         )
         return True
@@ -98,7 +102,7 @@ class ZombiePool:
                 ('is_moving', 'b1'),
                 ('slow_timer', 'f4'),
                 ('special_state', 'u4'),
-                ('speed_special', 'f4')
+                ('special_speed', 'f4')
             ]
         )
 
@@ -128,7 +132,7 @@ class ZombiePool:
             True,
             0.0,
             0,
-            zstate['speed_special'],
+            zstate['special_speed'],
         )
         return True
 

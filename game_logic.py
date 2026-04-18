@@ -167,7 +167,7 @@ class PvZGame:
         
         trespassed = (self.z['type'] > 0) & (self.z['x'] <= 0)
         if trespassed.any():
-            rows = np.where(trespassed)[0]
+            rows = np.unique(np.where(trespassed)[0])
             if (self.lawn_mowers[rows] > 0).all():
                 self.lawn_mowers[rows] -= 1
                 self.zombies.remove((rows,))
@@ -176,9 +176,8 @@ class PvZGame:
                 return True
 
         # Immobilize zombies
-        int_xs = self.z['x'].astype(np.uint32)
-        is_valid = (self.z['type'] > 0) & (int_xs < self.n_cols)
-        is_facing_plant = is_valid & (self.p[self.row_vect, int_xs]['type'] > 0)        
+        int_xs = np.clip(self.z['x'].astype(np.uint32), 0, self.n_cols - 1)
+        is_facing_plant = (self.z['type'] > 0) & (self.p[self.row_vect, int_xs]['type'] > 0)        
         is_running_pole = (self.z['type'] == Z.POLE_VAULT) & (self.z['special_state'] == 0)
         is_eating = is_facing_plant & ~is_running_pole & (self.z['x'] - int_xs < EATING_DISTANCE_THRESHOLD)
         self.z['is_moving'] = ~is_eating
@@ -201,35 +200,36 @@ class PvZGame:
         did_act = np.zeros(self.p.shape, dtype=np.bool_)
         damage_array = np.zeros(self.z.shape, dtype=np.float32)
 
-        # Bombs blow up
-        to_blow_up = acting & (self.p['blast_rad'] > 0)
-        for pidx in np.argwhere(to_blow_up):  # TODO: Vectorize
-            row, pcol = pidx
-            blast_rad = self.p[pidx]['blast_rad']
-            zrows = slice(max(row - blast_rad, 0), min(row + blast_rad, self.n_cols) + 1)
-            valid_target = (self.z[zrows]['type'] > 0) & (np.abs(self.z[zrows]['x'] - pcol) < (blast_rad + 0.5))
-            damage_array[zrows][valid_target] += self.p[pidx]['damage']
-        self.plants.remove(to_blow_up)
-
         # Peashooter attack
-        attacking = acting & (self.p['damage'] > 0) & (self.p['blast_rad'] == 0)
-        for pidx in np.argwhere(attacking):  # TODO: Vectorize
-            row, pcol = pidx 
+        single_hits = acting & (self.p['atk_mode'] == 0)
+        for row, pcol in np.argwhere(single_hits):  # TODO: Vectorize
             valid_target = (self.z[row]['type'] > 0) & (self.z[row]['x'] > pcol)
             if valid_target.any():
+                ptype = self.p[row, pcol]['type']
                 to_hit = np.argmin(np.where(valid_target, self.z[row]['x'], np.inf))
-                zidx = row, to_hit
-                damage_array[zidx] += self.p[pidx]['damage']
-                if self.z[zidx]['shield_health'] == 0:
-                    self.z[zidx]['slow_timer'] = np.maximum(self.z[zidx]['slow_timer'], self.p[pidx]['slow_dur'])
-                did_act[pidx] = True
+                damage_array[row, to_hit] += PLANTS[ptype - 1]['damage']
+                if self.z[row, to_hit]['shield_health'] == 0:
+                    self.z[row, to_hit]['slow_timer'] = np.maximum(self.z[row, to_hit]['slow_timer'], PLANTS[ptype - 1]['slow_dur'])
+                did_act[row, pcol] = True
+
+        # AoE attack
+        aoe_attack = acting & (self.p['atk_mode'] == 1)
+        for row, pcol in np.argwhere(aoe_attack):  # TODO: Vectorize
+            ptype = self.p[row, pcol]['type']
+            aoe_rad = PLANTS[ptype - 1]['aoe_rad']
+            zrows = slice(max(row - aoe_rad + 1, 0), min(row + aoe_rad, self.n_rows))
+            valid_target = (self.z[zrows]['type'] > 0) & (np.abs(self.z[zrows]['x'] - pcol) < (aoe_rad - 0.5))
+            if self.p[row, pcol]['instant'] or valid_target.any():
+                damage_array[zrows][valid_target] += PLANTS[ptype - 1]['damage']
+                did_act[row, pcol] = True
 
         # Sun production
         self.sun += np.sum(self.p['sun_prod'][acting])
         did_act |= (self.p['sun_prod'] > 0) & acting
 
-        self.p['timer'] += np.where(did_act, self.p['cooldown'], 0)
-        self.zombies.get_damage(damage_array)
+        self.p['timer'] += np.where(did_act, self.p['cooldown'], 0)  # Reset timers
+        self.plants.remove(did_act & (self.p['instant'] | self.p['single_use']))  # Remove single-use plants
+        self.zombies.get_damage(damage_array)  # Damage zombies
         return damage_array.sum()
         
     def place_plant(self, plant_type: int, row: int, col: int) -> tuple[bool, int]:
