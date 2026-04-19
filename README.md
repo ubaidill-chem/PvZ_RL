@@ -49,7 +49,7 @@ config = LevelConfig(
 game = PvZGame(config)
 
 # Simulate gameplay
-game.place_plant(plant_type=1, row=0, col=2)
+game.place_plant(ptype=1, row=0, col=2)
 info = game.update(dt=0.1)
 ```
 

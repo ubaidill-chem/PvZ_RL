@@ -21,7 +21,6 @@ class Wave(NamedTuple):
     rows: np.ndarray[tuple[int], np.dtype[np.uint32]]
     zombies: np.ndarray[tuple[int], np.dtype[np.uint32]]
     offsets: np.ndarray[tuple[int], np.dtype[np.float32]]
-    delay: float
 
 
 class StepInfo(NamedTuple):
@@ -38,11 +37,10 @@ class LevelConfig:
     n_flags: int
     p_init: np.ndarray[tuple[int], np.dtype[np.float64]]
     p_fin: np.ndarray[tuple[int], np.dtype[np.float64]]
-    flag_freq: int = 10
-    t_normal: float = 10.0
-    t_flag: float = 30.0
-    wave_size_init: float = 1.0
-    wave_size_ramp: float = 0.5
+    flag_freq: int = 8
+    wave_delay: float = 30.0
+    wave_size_init: float = 0.6
+    wave_size_ramp: float = 0.4
     flag_multi: float = 2.5
     n_rows: int = 5
     n_cols: int = 9
@@ -59,21 +57,20 @@ class LevelConfig:
         wave_nums = np.arange(self.n_waves)
         is_flag = (wave_nums + 1) % self.flag_freq == 0
 
-        wave_delays = np.where(is_flag, self.t_flag, self.t_normal)
         multiplier = np.where(is_flag, self.flag_multi, 1.0)
         wave_sizes = ((self.wave_size_init + wave_nums * self.wave_size_ramp) * multiplier).astype(np.uint32)
 
         progress = np.linspace(0.0, 1.0, self.n_waves).reshape(-1, 1)
-        probs = progress * self.p_init + (1 - progress) * self.p_fin
+        probs = (1 - progress) * self.p_init + progress * self.p_fin
 
         rng = np.random.default_rng(seed)
         roster: list[Wave] = []
-        for f, k, p, t in zip(is_flag, wave_sizes, probs, wave_delays):
+        for f, k, p in zip(is_flag, wave_sizes, probs):
             if f:
                 zombies = np.concatenate(([Z.FLAG_ZOMBIE], rng.choice(ZOMBIES['type'], k-1, p=p)))
             else:
                 zombies = rng.choice(ZOMBIES['type'], k, p=p)
-            wave = Wave(rng.choice(self.n_rows, k), zombies, rng.uniform(-0.4, 0.4, size=k), t)
+            wave = Wave(rng.choice(self.n_rows, k), zombies, rng.uniform(-0.4, 0.4, size=k))
             roster.append(wave)
         return roster
 
@@ -103,7 +100,7 @@ class PvZGame:
         self.sun_timer: float = self.lvlconfig.sun_cooldown
 
         self.spawn_roster = self.lvlconfig.spawn_roster()
-        self.spawn_timer: float = self.lvlconfig.t_flag
+        self.spawn_timer: float = self.lvlconfig.wave_delay
         self.upcoming_wave: int = 0
 
     def update(self, dt: float) -> StepInfo:
@@ -132,6 +129,7 @@ class PvZGame:
         if self.sun_timer <= 0:
             self.sun += self.lvlconfig.sun_value
             self.sun_timer += self.lvlconfig.sun_cooldown
+        self.sun = min(self.sun, 9900)
 
     def update_spawn(self, dt: float):
         if self.upcoming_wave == self.lvlconfig.n_waves:
@@ -141,11 +139,10 @@ class PvZGame:
             return False
 
         self.spawn_timer -= dt
-        if self.spawn_timer <= 0 or not self.z['type'].any():
-            rows, ztypes, offsets, t = self.spawn_roster[self.upcoming_wave]
-            for row, ztype, offset in zip(rows, ztypes, offsets):
+        if self.spawn_timer <= 0 or (not self.z['type'].any() and self.upcoming_wave > 0):
+            for row, ztype, offset in zip(*self.spawn_roster[self.upcoming_wave]):
                 self.zombies.spawn(int(row), int(ztype), float(offset))
-            self.spawn_timer = t
+            self.spawn_timer = self.lvlconfig.wave_delay
             self.upcoming_wave += 1
 
     def update_zombies(self, dt: float):
@@ -200,29 +197,8 @@ class PvZGame:
         did_act = np.zeros(self.p.shape, dtype=np.bool_)
         damage_array = np.zeros(self.z.shape, dtype=np.float32)
 
-        # Peashooter attack
-        single_hits = acting & (self.p['atk_mode'] == 0)
-        for row, pcol in np.argwhere(single_hits):  # TODO: Vectorize
-            ptype = self.p[row, pcol]['type']
-            atk_limit = PLANTS[ptype - 1]['atk_limit'] or np.inf
-            valid_target = (self.z[row]['type'] > 0) & (0 < self.z[row]['x'] - pcol < atk_limit)
-            if valid_target.any():
-                to_hit = np.argmin(np.where(valid_target, self.z[row]['x'], np.inf))
-                damage_array[row, to_hit] += PLANTS[ptype - 1]['damage']
-                if self.z[row, to_hit]['shield_health'] == 0:
-                    self.z[row, to_hit]['slow_timer'] = max(self.z[row, to_hit]['slow_timer'], PLANTS[ptype - 1]['slow_dur'])
-                did_act[row, pcol] = True
-
-        # AoE attack
-        aoe_attack = acting & (self.p['atk_mode'] == 1)
-        for row, pcol in np.argwhere(aoe_attack):  # TODO: Vectorize
-            ptype = self.p[row, pcol]['type']
-            aoe_rad = PLANTS[ptype - 1]['aoe_rad']
-            zrows = slice(max(row - aoe_rad + 1, 0), min(row + aoe_rad, self.n_rows))
-            valid_target = (self.z[zrows]['type'] > 0) & (np.abs(self.z[zrows]['x'] - pcol) < (aoe_rad - 0.5))
-            if self.p[row, pcol]['instant'] or valid_target.any():
-                damage_array[zrows][valid_target] += PLANTS[ptype - 1]['damage']
-                did_act[row, pcol] = True
+        self.update_single_hitters(acting, damage_array, did_act)
+        self.update_aoe_atk(acting, damage_array, did_act)
 
         # Sun production
         self.sun += np.sum(self.p['sun_prod'][acting])
@@ -232,24 +208,49 @@ class PvZGame:
         self.plants.remove(did_act & (self.p['instant'] | self.p['single_use']))  # Remove single-use plants
         self.zombies.get_damage(damage_array)  # Damage zombies
         return damage_array
+    
+    def update_single_hitters(self, acting: np.ndarray, damage_array: np.ndarray, did_act: np.ndarray):
+        single_hitters = acting & (self.p['atk_mode'] == 0)
+        for row, pcol in np.argwhere(single_hitters):  # TODO: Vectorize
+            ptype = self.p[row, pcol]['type']
+            atk_limit = PLANTS[ptype]['atk_range'] or np.inf + 0.5
+            dist = self.z[row]['x'] - (pcol + 0.5)
+            valid_target = (self.z[row]['type'] > 0) & (dist > 0) & (dist < atk_limit)
+            if valid_target.any():
+                to_hit = np.argmin(np.where(valid_target, self.z[row]['x'], np.inf))
+                damage_array[row, to_hit] += PLANTS[ptype]['damage']
+                if self.z[row, to_hit]['shield_health'] == 0:
+                    self.z[row, to_hit]['slow_timer'] = max(self.z[row, to_hit]['slow_timer'], PLANTS[ptype]['slow_dur'])
+                did_act[row, pcol] = True
+
+    def update_aoe_atk(self, acting: np.ndarray, damage_array: np.ndarray, did_act: np.ndarray):
+        aoe_attack = acting & (self.p['atk_mode'] == 1)
+        for row, pcol in np.argwhere(aoe_attack):  # TODO: Vectorize
+            ptype = self.p[row, pcol]['type']
+            aoe_rad = PLANTS[ptype]['aoe_rad']
+            zrows = slice(max(row - aoe_rad + 1, 0), min(row + aoe_rad, self.n_rows))
+            valid_target = (self.z[zrows]['type'] > 0) & (np.abs(self.z[zrows]['x'] - (pcol + 0.5)) < (aoe_rad - 0.5))
+            if self.p[row, pcol]['instant'] or valid_target.any():
+                damage_array[zrows][valid_target] += PLANTS[ptype]['damage']
+                did_act[row, pcol] = True
         
-    def place_plant(self, plant_type: int, row: int, col: int) -> tuple[bool, int]:
-        if plant_type <= 0 or plant_type > PLANTS.size:
-            print(f"Plant type {plant_type} does not exist")
+    def place_plant(self, ptype: int, row: int, col: int) -> tuple[bool, int]:
+        if ptype <= 0 or ptype > PLANTS.size:
+            print(f"Plant type {ptype} does not exist")
             return False, 0
         
-        if self.sun < PLANTS[plant_type - 1]['cost']:
+        if self.sun < PLANTS[ptype]['cost']:
             print("Not enough sun")
             return False, 0
         
-        if self.seed_timers[plant_type - 1] > 0:
+        if self.seed_timers[ptype] > 0:
             print("Plant not ready")
             return False, 0
 
-        if self.plants.place(row, col, plant_type):
-            sun_spent = PLANTS[plant_type - 1]['cost']
+        if self.plants.place(row, col, ptype):
+            sun_spent = PLANTS[ptype]['cost']
             self.sun -= sun_spent
-            self.seed_timers[plant_type - 1] = PLANTS[plant_type - 1]['seed_recharge']
+            self.seed_timers[ptype] = PLANTS[ptype]['seed_recharge']
             return True, sun_spent
         return False, 0
 
