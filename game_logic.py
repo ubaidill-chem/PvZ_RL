@@ -7,8 +7,15 @@ import numpy as np
 from pools import PLANTS, ZOMBIES, PlantGrid, ZombiePool
 
 
+# Game Mechanics Constants
 EATING_DISTANCE_THRESHOLD = 0.6  # must be closer than 0.6 tiles away to eat
 BITE_RATE_MULTIPLIER = 10  # 10 bites takes the same time as moving 1 tile
+SLOW_SPEED_MULTIPLIER = 0.5  # slowed zombies move at 50% speed
+POLE_VAULT_JUMP_DISTANCE = 1.0  # distance pole vault zombies jump per action
+
+# Zombie Movement Constants
+MAX_SUN_STORAGE = 9900  # cap on sun that can be stored
+SPAWN_OFFSET_RANGE = 0.4  # spawn position random offset range (±)
 
 
 class Z(IntEnum):
@@ -70,7 +77,7 @@ class LevelConfig:
                 zombies = np.concatenate(([Z.FLAG_ZOMBIE], rng.choice(ZOMBIES['type'], k-1, p=p)))
             else:
                 zombies = rng.choice(ZOMBIES['type'], k, p=p)
-            wave = Wave(rng.choice(self.n_rows, k), zombies, rng.uniform(-0.4, 0.4, size=k))
+            wave = Wave(rng.choice(self.n_rows, k), zombies, rng.uniform(-SPAWN_OFFSET_RANGE, SPAWN_OFFSET_RANGE, size=k))
             roster.append(wave)
         return roster
 
@@ -129,7 +136,7 @@ class PvZGame:
         if self.sun_timer <= 0:
             self.sun += self.lvlconfig.sun_value
             self.sun_timer += self.lvlconfig.sun_cooldown
-        self.sun = min(self.sun, 9900)
+        self.sun = min(self.sun, MAX_SUN_STORAGE)
 
     def update_spawn(self, dt: float):
         if self.upcoming_wave == self.lvlconfig.n_waves:
@@ -156,7 +163,7 @@ class PvZGame:
         # Update slow
         self.z['slow_timer'] = np.maximum(self.z['slow_timer'] - dt, 0)
         slowed = self.z['slow_timer'] > 0
-        self.z['speed'] = np.where(slowed, self.z['default_speed'] * 0.5, self.z['default_speed'])
+        self.z['speed'] = np.where(slowed, self.z['default_speed'] * SLOW_SPEED_MULTIPLIER, self.z['default_speed'])
 
         # Move zombies
         deltax = np.where(self.z['is_moving'], self.z['speed'] * dt, 0.0)
@@ -181,7 +188,7 @@ class PvZGame:
 
         # Pole vault jumps
         to_jump = is_facing_plant & is_running_pole
-        self.z['x'] -= np.where(to_jump, 1, 0)
+        self.z['x'] -= np.where(to_jump, POLE_VAULT_JUMP_DISTANCE, 0)
         self.z['special_state'] += np.where(to_jump, 1, 0)
 
         # Damage plants
@@ -213,7 +220,7 @@ class PvZGame:
         single_hitters = acting & (self.p['atk_mode'] == 0)
         for row, pcol in np.argwhere(single_hitters):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
-            atk_limit = PLANTS[ptype]['atk_range'] or np.inf + 0.5
+            atk_limit = PLANTS[ptype]['atk_range'] + 0.5 or np.inf
             dist = self.z[row]['x'] - (pcol + 0.5)
             valid_target = (self.z[row]['type'] > 0) & (dist > 0) & (dist < atk_limit)
             if valid_target.any():
