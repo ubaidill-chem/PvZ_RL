@@ -17,7 +17,6 @@ POLE_VAULT_JUMP_DISTANCE = 1.0  # distance pole vault zombies jump per action
 MAX_SUN_STORAGE = 9900  # cap on sun that can be stored
 SPAWN_OFFSET_RANGE = 0.4  # spawn position random offset range (±)
 
-
 class Z(IntEnum):
     FLAG_ZOMBIE = 2
     POLE_VAULT = 5
@@ -41,6 +40,7 @@ class StepInfo(NamedTuple):
 
 @dataclass
 class LevelConfig:
+    plants: list[int]
     n_flags: int
     p_init: np.ndarray[tuple[int], np.dtype[np.float64]]
     p_fin: np.ndarray[tuple[int], np.dtype[np.float64]]
@@ -82,14 +82,37 @@ class LevelConfig:
         return roster
 
 
+def generate_seed_bank(p_types: list[int]):
+    if len(p_types) > 9:
+        raise ValueError("Seed bank can only hold up to 9 plants")
+        
+    seed_bank = np.array([(
+        p, 
+        PLANTS[p]['cost'], 
+        PLANTS[p]['seed_recharge'], 
+        PLANTS[p]['seed_recharge'] if PLANTS[p]['seed_recharge'] > 10 else 0
+        ) for p in p_types],
+        dtype=[
+            ('type', 'f4'),
+            ('cost', 'i4'),
+            ('recharge', 'f4'),
+            ('timer', 'f4')
+        ]
+    )
+    seed_bank['timer'] = np.maximum(seed_bank['timer'], 0)
+    return seed_bank
+        
+
 class PvZGame:
-    def __init__(self, lvlconfig: LevelConfig, init_sun: int = 50, seed_timer_init: float = 10.0):
+    def __init__(self, lvlconfig: LevelConfig, init_sun: int = 50):
         self.lvlconfig = lvlconfig
         self.n_rows = self.lvlconfig.n_rows
         self.n_cols = self.lvlconfig.n_cols
 
         self.sun: int = init_sun
-        self.seed_timers_init = np.maximum(PLANTS['seed_recharge'] - seed_timer_init, 0)
+        self.seed_bank = generate_seed_bank(self.lvlconfig.plants)
+        self.seed_timers_init = self.seed_bank['timer'].copy()
+
         self.plants = PlantGrid(self.n_rows, self.n_cols)
         self.zombies = ZombiePool(self.n_rows, self.n_cols)
         self.lawn_mowers = np.full(self.n_rows, self.lvlconfig.lawn_mowers)
@@ -103,7 +126,7 @@ class PvZGame:
         self.p[:] = 0
         self.z[:] = 0
 
-        self.seed_timers = self.seed_timers_init
+        self.seed_bank['timer'] = self.seed_timers_init
         self.sun_timer: float = self.lvlconfig.sun_cooldown
 
         self.spawn_roster = self.lvlconfig.spawn_roster()
@@ -116,7 +139,7 @@ class PvZGame:
         plants_before  = (self.p['type'] > 0).sum()
         mowers_before  = self.lawn_mowers.sum()
 
-        self.seed_timers = np.maximum(self.seed_timers - dt, 0)
+        self.seed_bank['timer'] = np.maximum(self.seed_bank['timer'] - dt, 0)
         self.update_sky_sun(dt)
         damage_array = self.update_plants(dt)
         is_win = self.update_spawn(dt)
@@ -242,22 +265,22 @@ class PvZGame:
                 did_act[row, pcol] = True
         
     def place_plant(self, ptype: int, row: int, col: int) -> tuple[bool, int]:
-        if ptype <= 0 or ptype > PLANTS.size:
-            print(f"Plant type {ptype} does not exist")
+        if ptype not in self.seed_bank['type']:
+            print(f"Plant type {ptype} is not in the seed bank")
             return False, 0
         
-        if self.sun < PLANTS[ptype]['cost']:
+        if self.sun < self.seed_bank['cost']:
             print("Not enough sun")
             return False, 0
         
-        if self.seed_timers[ptype] > 0:
+        if self.seed_bank[ptype]['timer'] > 0:
             print("Plant not ready")
             return False, 0
 
         if self.plants.place(row, col, ptype):
-            sun_spent = PLANTS[ptype]['cost']
+            sun_spent = self.seed_bank[ptype]['cost']
             self.sun -= sun_spent
-            self.seed_timers[ptype] = PLANTS[ptype]['seed_recharge']
+            self.seed_bank[ptype]['timer'] = self.seed_bank[ptype]['recharge']
             return True, sun_spent
         return False, 0
 
