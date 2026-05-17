@@ -11,8 +11,12 @@ ZOMB_NAMES = np.char.decode(ZOMBIES['name'], 'utf-8')
 PLANT_NAMES = np.char.decode(PLANTS['name'], 'utf-8')
 
 IMG_SIZES = {'misc': {'lawnmower': (69, 56), 'shovel': (72, -1), 'seedpacket': (50, -1)},
-             'zombies': {'conehead': (70, -1), 'polevault': (-1, 114), 'polevault2': (70, 114), 'unknown_z': (70, -1)}}
-HEALTH_TEXTURES = {'wallnut': {2667: 'wallnut2', 1333: 'wallnut3'}}
+             'zombies': {'conehead': (70, -1), 'polevault': (-1, 114), 'polevault2': (70, 114), 'unknown_z': (70, -1)},
+             'plants': {'peashooter': (-1, 75), 'sunflower': (-1, 75), 'wallnut': (-1, 75), 'cherrybomb': (-1, 75),
+                        'snowpea': (-1, 75), 'potatomine': (70, -1), 'chomper': (-1, 75), 'repeater': (-1, 75)},
+                        'wallnut2': (-1, 75), 'wallnut3': (-1, 75)}
+HEALTH_TEXTURES = {'wallnut': {2667: 'wallnut2', 1333: 'wallnut3'},
+                   'conhead': {190: 'basic'}, 'bucket': {190: 'basic'}}
 STATE_TEXTURES = {'polevault': {1: 'polevault2'}}
 
 
@@ -44,9 +48,9 @@ SEED_START_Y = 8
 SEED_W = 52
 
 ZOMBIE_COORD_X_OFFSET = 70
-ZOMBIE_COORD_Y_OFFSET = 180
+ZOMBIE_COORD_Y_OFFSET = 170
 PLANT_COORD_X_OFFSET = 110
-PLANT_COORD_Y_OFFSET = 180
+PLANT_COORD_Y_OFFSET = 170
 
 COST_FONT_SIZE = 12
 COST_FONT_TYPE = 'Consolas'
@@ -78,6 +82,22 @@ for path in Path('assets').rglob('*.*'):
     IMGS[name] = img
 
 
+SEED_DARK_OVERLAY = pygame.Surface(IMGS["seedpacket"].size, pygame.SRCALPHA)
+SEED_LIGHT_OVERLAY = pygame.Surface(IMGS["seedpacket"].size, pygame.SRCALPHA)
+SEED_DARK_OVERLAY.fill((0, 0, 0, 85))
+SEED_LIGHT_OVERLAY.fill((255, 255, 255, 85))
+
+LAWN_OVERLAY_V = pygame.Surface((TILE_W, TILE_H * GRID_ROWS), pygame.SRCALPHA)
+LAWN_OVERLAY_H = pygame.Surface((TILE_W * GRID_COLS, TILE_H), pygame.SRCALPHA)
+LAWN_OVERLAY_V.fill((255, 255, 255, 85))
+LAWN_OVERLAY_H.fill((255, 255, 255, 85))
+
+SHOVEL_OVERLAY = pygame.Surface(IMGS["shovel"].size, pygame.SRCALPHA)
+SHOVEL_OVERLAY.fill((255, 255, 255, 85))
+
+is_shovel = False
+
+
 def render_misc(sun: int, lawn_mowers: np.ndarray[tuple[int]]):
     sun_txt = SUN_FONT.render(str(sun), True, SUN_FONT_COLOR)
     sun_rect = sun_txt.get_rect(center=(SUN_DISPLAY_X, 70))
@@ -86,15 +106,24 @@ def render_misc(sun: int, lawn_mowers: np.ndarray[tuple[int]]):
         (IMGS['shovel'], (SHOVEL_POS_X, 0)),
         (sun_txt, sun_rect)
     ]
-    to_blit.extend([(IMGS['lawnmower'], (LAWN_MOWER_POS.x, LAWN_MOWER_POS.y + TILE_H * i)) for i in np.where(lawn_mowers > 0)[0]])
+
+    if is_shovel:
+        to_blit.append((SHOVEL_OVERLAY, (SHOVEL_POS_X, 0)))
+
+    x, y = pygame.mouse.get_pos()
+    if (GRID_START_X <= x <= GRID_START_X + TILE_W * GRID_COLS) and (GRID_START_Y <= y <= GRID_START_Y + TILE_H * GRID_ROWS):
+        lawn_col = (x - GRID_START_X) // TILE_W
+        lawn_row = (y - GRID_START_Y) // TILE_H
+        to_blit.append((LAWN_OVERLAY_V, (GRID_START_X + TILE_W * lawn_col, GRID_START_Y)))
+        to_blit.append((LAWN_OVERLAY_H, (GRID_START_X, GRID_START_Y + TILE_H * lawn_row)))
+
+    for i in np.where(lawn_mowers > 0)[0]:
+        to_blit.append((IMGS['lawnmower'], (LAWN_MOWER_POS.x, LAWN_MOWER_POS.y + TILE_H * i)))
     return to_blit
 
 
-def render_seedbank(seedbank: np.ndarray[tuple[int, int]], sun: int):
+def render_seedbank(seedbank: np.ndarray[tuple[int, int]], sun: int, selected_idx: int | None):
     seed_img = IMGS['seedpacket']
-    dark_overlay = pygame.Surface(seed_img.size, pygame.SRCALPHA)
-    dark_overlay.fill((0, 0, 0, 85))
-
     seeds = []
     for i, seed in enumerate(seedbank):
         seed_pos = (SEED_START_X + SEED_W * i, SEED_START_Y)
@@ -110,12 +139,14 @@ def render_seedbank(seedbank: np.ndarray[tuple[int, int]], sun: int):
         seeds.append((cost_txt, cost_rect))
 
         recharge_prog = 1 - float(seed['timer'] / seed['recharge'])
-        if recharge_prog < 1 or sun < seed['cost']:
-            seeds.append((dark_overlay, seed_pos))
-
         if recharge_prog < 1:
+            seeds.append((SEED_DARK_OVERLAY, seed_pos))
             overlay_rect = pygame.Rect(0, 0, seed_img.width, round(seed_img.height * (1 - recharge_prog)))
-            seeds.append((dark_overlay, seed_pos, overlay_rect))
+            seeds.append((SEED_DARK_OVERLAY, seed_pos, overlay_rect))
+        elif sun < seed['cost']:
+            seeds.append((SEED_DARK_OVERLAY, seed_pos))
+        elif i is not None and i == selected_idx:
+            seeds.append((SEED_LIGHT_OVERLAY, seed_pos))
 
     return seeds
 
@@ -132,7 +163,7 @@ def render_plants(plant_state: np.ndarray[tuple[int, int]]):
         
         img = IMGS.get(name, IMGS['unknown_p'])
 
-        mid = PLANT_COORD_X_OFFSET + TILE_W * col
+        mid = PLANT_COORD_X_OFFSET + TILE_W * (col - 0.5)
         bottom = PLANT_COORD_Y_OFFSET + TILE_H * row
         rect = img.get_rect(midbottom=(mid, bottom))
 
@@ -152,7 +183,7 @@ def render_zombies(zomb_state: np.ndarray[tuple[int, int]]):
         if health_textures and (ks := [h for h in health_textures.keys() if z['health'] < h]):
             name = health_textures[min(ks)]
 
-        img = IMGS.get(name, IMGS['unknown_p'])
+        img = IMGS.get(name, IMGS['unknown_z'])
         mid = ZOMBIE_COORD_X_OFFSET + TILE_W * float(z['x'])
         bottom = ZOMBIE_COORD_Y_OFFSET + TILE_H * row
         rect = img.get_rect(midbottom=(mid, bottom))
@@ -170,7 +201,39 @@ def draw_grid():
         pygame.draw.line(SCREEN, GRID_LINE_COLOR, 
                         (GRID_START_X + TILE_W * i, GRID_START_Y), 
                         (GRID_START_X + TILE_W * i, GRID_START_Y + TILE_H * GRID_ROWS))
+        
 
+def process_clicks(game_engine: PvZGame, x: int, y: int):
+    global is_shovel 
+    if (GRID_START_X <= x <= GRID_START_X + TILE_W * GRID_COLS) and (GRID_START_Y <= y <= GRID_START_Y + TILE_H * GRID_ROWS):
+        # Clicked lawn
+        lawn_row = (y - GRID_START_Y) // TILE_H
+        lawn_col = (x - GRID_START_X) // TILE_W
+        if is_shovel:
+            game_engine.shovel_plant(lawn_row, lawn_col)
+            is_shovel = False
+        else:
+            game_engine.place_plant(lawn_row, lawn_col)
+        return
+    
+    shovel_w, shovel_h = IMGS["shovel"].size
+    if (SHOVEL_POS_X <= x <= SHOVEL_POS_X + shovel_w) and (0 <= y <= shovel_h):
+        # Clicked shovel
+        is_shovel = not is_shovel
+        return
+    
+    n_seeds = game_engine.seed_bank.shape[0]
+    if (SEED_START_X <= x <= SEED_START_X + SEED_W * n_seeds) and (SEED_START_Y <= y <= GRID_START_Y + 70):
+        # Clicked seed slot
+        idx = (x - SEED_START_X) // SEED_W
+        if idx != game_engine.selected_plant_idx:
+            game_engine.select_plant(idx)
+            return
+    
+    game_engine.deselect_plant()
+    if is_shovel:
+        is_shovel = False
+    
 
 def play(game_engine: PvZGame):
     dt = 0
@@ -179,15 +242,17 @@ def play(game_engine: PvZGame):
         for event in pygame.event.get():
             if event.type == pygame.QUIT or event.type == pygame.K_ESCAPE:
                 running = False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                process_clicks(game_engine, *event.pos)
 
         game_outcome, *_ = game_engine.update(dt)
         running = running and (game_outcome == 0)
 
         SCREEN.blit(IMGS['lawn'], LAWN_POS)
-        draw_grid()
+        # draw_grid()
 
         to_blit = render_misc(game_engine.sun, game_engine.lawn_mowers)
-        to_blit.extend(render_seedbank(game_engine.seed_bank, game_engine.sun))
+        to_blit.extend(render_seedbank(game_engine.seed_bank, game_engine.sun, game_engine.selected_plant_idx))
         to_blit.extend(render_plants(game_engine.p))
         to_blit.extend(render_zombies(game_engine.z))
         SCREEN.blits(to_blit)

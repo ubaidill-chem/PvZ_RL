@@ -24,9 +24,9 @@ class Z(IntEnum):
 
 
 class Wave(NamedTuple):
-    rows: np.ndarray[tuple[int], np.dtype[np.uint32]]
+    rows: np.ndarray[tuple[int], np.dtype[np.int64]]
     zombies: np.ndarray[tuple[int], np.dtype[np.uint32]]
-    offsets: np.ndarray[tuple[int], np.dtype[np.float32]]
+    offsets: np.ndarray[tuple[int], np.dtype[np.float64]]
 
 
 class StepInfo(NamedTuple):
@@ -57,15 +57,24 @@ class LevelConfig:
 
     def __post_init__(self):
         self.n_waves = self.n_flags * self.flag_freq
-        self.p_init = np.pad(self.p_init, (0, ZOMBIES.size - self.p_init.size)) / self.p_init.sum()
-        self.p_fin = np.pad(self.p_fin, (0, ZOMBIES.size - self.p_fin.size)) / self.p_fin.sum()
+        self.p_init = np.pad(self.p_init, (0, ZOMBIES.size - self.p_init.size))
+        self.p_fin = np.pad(self.p_fin, (0, ZOMBIES.size - self.p_fin.size))
+
+        init_sum = float(self.p_init.sum())
+        fin_sum = float(self.p_fin.sum())
+        if init_sum == 0.0 or fin_sum == 0.0:
+            raise ValueError("p_init and p_fin must have a non-zero sum")
+        
+        self.p_init = self.p_init / init_sum
+        self.p_fin = self.p_fin / fin_sum
 
     def spawn_roster(self, seed: Optional[int] = None) -> list[Wave]:
         wave_nums = np.arange(self.n_waves)
         is_flag = (wave_nums + 1) % self.flag_freq == 0
 
         multiplier = np.where(is_flag, self.flag_multi, 1.0)
-        wave_sizes = ((self.wave_size_init + wave_nums * self.wave_size_ramp) * multiplier).astype(np.uint32)
+        raw_sizes = (self.wave_size_init + wave_nums * self.wave_size_ramp) * multiplier
+        wave_sizes = np.maximum(raw_sizes.round(), 1)
 
         progress = np.linspace(0.0, 1.0, self.n_waves).reshape(-1, 1)
         probs = (1 - progress) * self.p_init + progress * self.p_fin
@@ -73,8 +82,9 @@ class LevelConfig:
         rng = np.random.default_rng(seed)
         roster: list[Wave] = []
         for f, k, p in zip(is_flag, wave_sizes, probs):
+            k = int(k)
             if f:
-                zombies = np.concatenate(([Z.FLAG_ZOMBIE], rng.choice(ZOMBIES['type'], k-1, p=p)))
+                zombies = np.concatenate(([Z.FLAG_ZOMBIE], rng.choice(ZOMBIES['type'], max(k-1, 1), p=p)))
             else:
                 zombies = rng.choice(ZOMBIES['type'], k, p=p)
             wave = Wave(rng.choice(self.n_rows, k), zombies, rng.uniform(-SPAWN_OFFSET_RANGE, SPAWN_OFFSET_RANGE, size=k))
@@ -128,6 +138,7 @@ class PvZGame:
 
         self.seed_bank['timer'] = self.seed_timers_init
         self.sun_timer: float = self.lvlconfig.sun_cooldown
+        self.selected_plant_idx = None
 
         self.spawn_roster = self.lvlconfig.spawn_roster()
         self.spawn_timer: float = self.lvlconfig.wave_delay
@@ -195,15 +206,16 @@ class PvZGame:
         trespassed = (self.z['type'] > 0) & (self.z['x'] <= 0)
         if trespassed.any():
             rows = np.unique(np.where(trespassed)[0])
-            if (self.lawn_mowers[rows] > 0).all():
-                self.lawn_mowers[rows] -= 1
-                self.zombies.remove((rows,))
-            else:
-                print("Game over")
-                return True
+            for r in rows:
+                if self.lawn_mowers[r] > 0:
+                    self.lawn_mowers[r] -= 1
+                    self.zombies.remove((np.array([r]),))
+                else:
+                    print("Game over")
+                    return True
 
         # Immobilize zombies
-        int_xs = np.clip(self.z['x'].astype(np.uint32), 0, self.n_cols - 1)
+        int_xs = np.clip(np.floor(self.z['x']), 0, self.n_cols - 1).astype(int)
         is_facing_plant = (self.z['type'] > 0) & (self.p[self.row_vect, int_xs]['type'] > 0)        
         is_running_pole = (self.z['type'] == Z.POLE_VAULT) & (self.z['special_state'] == 0)
         is_eating = is_facing_plant & ~is_running_pole & (self.z['x'] - int_xs < EATING_DISTANCE_THRESHOLD)
@@ -243,9 +255,9 @@ class PvZGame:
         single_hitters = acting & (self.p['atk_mode'] == 0)
         for row, pcol in np.argwhere(single_hitters):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
-            atk_limit = PLANTS[ptype]['atk_range'] + 0.5 or np.inf
+            atk_limit = PLANTS[ptype]['atk_range'] or np.inf
             dist = self.z[row]['x'] - (pcol + 0.5)
-            valid_target = (self.z[row]['type'] > 0) & (dist > 0) & (dist < atk_limit)
+            valid_target = (self.z[row]['type'] > 0) & (dist > 0) & (dist < atk_limit + 0.5)
             if valid_target.any():
                 to_hit = np.argmin(np.where(valid_target, self.z[row]['x'], np.inf))
                 damage_array[row, to_hit] += PLANTS[ptype]['damage']
@@ -257,32 +269,50 @@ class PvZGame:
         aoe_attack = acting & (self.p['atk_mode'] == 1)
         for row, pcol in np.argwhere(aoe_attack):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
-            aoe_rad = PLANTS[ptype]['aoe_rad']
-            zrows = slice(max(row - aoe_rad + 1, 0), min(row + aoe_rad, self.n_rows))
+            aoe_rad = int(PLANTS[ptype]['aoe_rad'])
+            z_start = max(row - aoe_rad + 1, 0)
+            z_stop = min(row + aoe_rad, self.n_rows)
+            zrows = slice(z_start, z_stop)
             valid_target = (self.z[zrows]['type'] > 0) & (np.abs(self.z[zrows]['x'] - (pcol + 0.5)) < (aoe_rad - 0.5))
             if self.p[row, pcol]['instant'] or valid_target.any():
-                damage_array[zrows][valid_target] += PLANTS[ptype]['damage']
+                tr, tc = np.where(valid_target)
+                if tr.size:
+                    np.add.at(damage_array, (tr + z_start, tc), PLANTS[ptype]['damage'])
                 did_act[row, pcol] = True
         
-    def place_plant(self, ptype: int, row: int, col: int) -> tuple[bool, int]:
-        if ptype not in self.seed_bank['type']:
-            print(f"Plant type {ptype} is not in the seed bank")
-            return False, 0
-        
-        if self.sun < self.seed_bank['cost']:
+    def select_plant(self, idx: int) -> bool:
+        self.deselect_plant()
+        if self.sun < self.seed_bank[idx]['cost']:
             print("Not enough sun")
-            return False, 0
+            return False
         
-        if self.seed_bank[ptype]['timer'] > 0:
+        if self.seed_bank[idx]['timer'] > 0:
             print("Plant not ready")
-            return False, 0
+            return False
+        
+        self.selected_plant_idx = idx
+        return True
 
+    def place_plant(self, row: int, col: int) -> tuple[bool, int]:
+        idx = self.selected_plant_idx
+        if idx is None:
+            return False, 0
+        ptype = int(self.seed_bank[idx]['type'])
         if self.plants.place(row, col, ptype):
-            sun_spent = self.seed_bank[ptype]['cost']
+            sun_spent = self.seed_bank[idx]['cost']
             self.sun -= sun_spent
-            self.seed_bank[ptype]['timer'] = self.seed_bank[ptype]['recharge']
+            self.seed_bank[idx]['timer'] = self.seed_bank[idx]['recharge']
+            self.deselect_plant()
             return True, sun_spent
         return False, 0
+    
+    def select_and_place(self, idx: int, row: int, col: int) -> tuple[bool, int]:
+        if self.select_plant(idx):
+            return self.place_plant(row, col)
+        return False, 0
+
+    def deselect_plant(self):
+        self.selected_plant_idx = None
 
     def shovel_plant(self, row: int, col: int) -> bool:
         if row < 0 or row >= self.n_rows or col < 0 or col >= self.n_cols:

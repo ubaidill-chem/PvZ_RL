@@ -59,7 +59,7 @@ class PlantGrid:
         )
     
     def place(self, row: int, col: int, ptype: int, init_cooldown_discount: float = 0.3):
-        if ptype <= 0 or ptype > PLANTS.size:
+        if ptype <= 0 or ptype >= PLANTS.size:
             print(f"Plant type {ptype} does not exist")
             return False
 
@@ -72,6 +72,8 @@ class PlantGrid:
             return False
         
         pstate = PLANTS[ptype]
+        init_cooldown = 0 if pstate['atk_mode'] == 0 else pstate['cooldown'] if pstate['atk_mode'] == 1 else pstate['cooldown'] * init_cooldown_discount
+ 
         self.state[row, col] = (
             ptype,
             pstate['health'],
@@ -80,7 +82,7 @@ class PlantGrid:
             pstate['atk_mode'],
             pstate['instant'],
             pstate['single_use'],
-            pstate['cooldown'] * init_cooldown_discount  # discounted cooldown first time
+            init_cooldown  # discounted cooldown first time
         )
         return True
 
@@ -117,7 +119,7 @@ class ZombiePool:
         )
 
     def spawn(self, row: int, ztype: int, x_pos: float = 0.0):
-        if ztype <= 0 or ztype > len(ZOMBIES):
+        if ztype <= 0 or ztype >= len(ZOMBIES):
             print(f"Zombie type {ztype} does not exist")
             return False
 
