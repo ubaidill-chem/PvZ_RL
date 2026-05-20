@@ -134,7 +134,7 @@ class ZombiePool:
 
         zstate = ZOMBIES[ztype]
         self.state[row, empty[0]] = (
-            self.ncols + 1 + x_pos,
+            self.ncols - 0.5 + x_pos,
             ztype,
             zstate['health'],
             zstate['shield_health'],
@@ -151,7 +151,11 @@ class ZombiePool:
     def get_damage(self, damage_array: npt.NDArray[np.float32]):
         if not damage_array.any():
             return
-        self.state['health'] -= np.where(self.state['shield_health'] > 0, 0, damage_array)
+        remaining_dmg = np.maximum(damage_array - self.state['shield_health'], 0)
+        self.state['health'] -= np.where(
+            self.state['shield_health'] <= 0, damage_array, 
+            np.where(remaining_dmg >= self.state['health'], self.state['health'], 0)
+            )
         self.state['shield_health'] = np.maximum(self.state['shield_health'] - damage_array, 0)
         self.remove(self.state['health'] <= 0)
 
