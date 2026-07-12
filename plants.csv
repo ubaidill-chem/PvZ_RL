@@ -1,4 +1,4 @@
-name,type,health,cooldown,damage,cost,seed_recharge,sun_prod,atk_mode,aoe_rad,instant,single_use,slow_duration,atk_range,nocturnal
+name,type,health,cooldown,damage,cost,seed_recharge,sun_prod,atk_mode,aoe_rad,instant,single_use,slow_duration,atk_range
 peashooter,1,300,1.425,20,100,7.5,0,0,0,0,0,0,0
 sunflower,2,300,24.25,0,50,7.5,50,-1,0,0,0,0,0
 wallnut,3,4000,0,0,50,30,0,-1,0,0,0,0,0
