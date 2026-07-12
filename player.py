@@ -21,26 +21,27 @@ def process_clicks(game_engine: PvZGame, x: int, y: int):
             game_engine.shovel_plant(lawn_row, lawn_col)
         else:
             game_engine.place_plant(lawn_row, lawn_col)
-        is_shovel = False
+            is_shovel = False
         return
 
+    seed_w, seed_h = IMGS["seedpacket"].size
+    n_seeds = game_engine.seed_bank.shape[0]
+    if (0 <= (x - SEED_START_X) <= seed_w) and (0 <= (y - SEED_START_Y) <= seed_h * n_seeds):
+        # Clicked seed slot
+        is_shovel = False
+        idx = (y - SEED_START_Y) // seed_h
+        if idx != game_engine.selected_plant_idx:
+            game_engine.select_plant(idx)
+            return
+    
+    game_engine.deselect_plant()
     shovel_w, shovel_h = IMGS["shovel"].size
     if (0 <= (x - SHOVEL_POS.x) <= shovel_w) and (0 <= (y - SHOVEL_POS.y) <= shovel_h):
         # Clicked shovel
         is_shovel = not is_shovel
         return
-
+    
     is_shovel = False
-    seed_w, seed_h = IMGS["seedpacket"].size
-    n_seeds = game_engine.seed_bank.shape[0]
-    if (0 <= (x - SEED_START_X) <= seed_w) and (0 <= (y - SEED_START_Y) <= seed_h * n_seeds):
-        # Clicked seed slot
-        idx = (y - SEED_START_Y) // seed_h
-        if idx != game_engine.selected_plant_idx:
-            game_engine.select_plant(idx)
-            return
-
-    game_engine.deselect_plant()
 
 
 def play(game_engine: PvZGame):

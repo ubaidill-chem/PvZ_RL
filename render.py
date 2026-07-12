@@ -2,7 +2,7 @@ import numpy as np
 import pygame
 
 from assets import (
-    COST_FONT, COST_FONT_COLOR, GRID_COLS, GRID_LINE_COLOR, GRID_ROWS, GRID_START_X, GRID_START_Y, HEALTH_TEXTURES, 
+    COST_FONT, COST_FONT_COLOR, FPS, GRID_COLS, GRID_LINE_COLOR, GRID_ROWS, GRID_START_X, GRID_START_Y, HEALTH_TEXTURES, 
     IMGS, INERT_TEXTURES, LAWN_MOWER_POS, LAWN_OVERLAY_H, LAWN_OVERLAY_V, LIGHT_GREEN, PBAR_MARGIN, PLANT_NAMES, 
     PLANT_X_OFFSET, PLANT_Y_OFFSET, PROG_BAR_H, PROG_BAR_W, PROG_BAR_X, PROG_BAR_Y, PROGRESS_BAR, SCREEN, 
     SEED_DARK_OVERLAY, SEED_LIGHT_OVERLAY, SEED_START_X, SEED_START_Y, SHOVEL_OVERLAY, SHOVEL_POS, STATE_TEXTURES, 
@@ -18,7 +18,7 @@ def render_misc(sun: int, lvl_prog: float, n_flags: int, lawn_mowers: np.ndarray
     to_blit = [
         (IMGS['shovel'], SHOVEL_POS),
         (SUN_TXT_BOX, (31, 10)),
-        (IMGS['sun'], (11, -2)),
+        (IMGS['sun_icon'], (11, -2)),
         (sun_txt, sun_txt_rect)
     ]
 
@@ -112,10 +112,17 @@ def render_plants(plant_state: np.ndarray[tuple[int, int]], damage_array: np.nda
         mid = GRID_START_X + PLANT_X_OFFSET + TILE_W * col
         bottom = GRID_START_Y + PLANT_Y_OFFSET +TILE_H * row
         rect = img.get_rect(midbottom=(mid, bottom))
-
         plants.append((img, rect))
+        
         if damage_array[row, col] > 0:
             plants.append((IMGS[f"{name}_hit"], rect))
+
+        if p['timer'] > 0.2:
+            continue
+
+        if (sp := p['sun_prod']) > 0:
+            sun_type = 'sun_small' if sp == 25 else 'sun' if sp == 50 else 'sun_large'
+            plants.append((IMGS[sun_type], rect))
 
     return plants
 

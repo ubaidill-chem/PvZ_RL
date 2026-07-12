@@ -253,10 +253,11 @@ class PvZGame:
         self.p['timer'] -= np.where(self.p['timer'] > 0, dt, 0)        
         acting = self.p['timer'] <= 0
         did_act = np.zeros(self.p.shape, dtype=np.bool_)
-        damage_array = np.zeros(self.z.shape, dtype=np.float32)
+        dmg_arr = np.zeros(self.z.shape, dtype=np.float32)
+        shield_dmg_arr = np.zeros(self.z.shape, dtype=np.float32)
 
-        self.update_single_hitters(acting, damage_array, did_act)
-        self.update_aoe_atk(acting, damage_array, did_act)
+        self.update_single_hitters(acting, dmg_arr, shield_dmg_arr, did_act)
+        self.update_aoe_atk(acting, dmg_arr, shield_dmg_arr, did_act)
 
         # Sun production
         self.sun += np.sum(self.p['sun_prod'][acting])
@@ -264,26 +265,32 @@ class PvZGame:
 
         self.p['timer'] += np.where(did_act, self.p['cooldown'], 0)
         self.plants.remove(did_act & (self.p['instant'] | self.p['single_use']))  # Remove single-use plants
-        self.zombies.get_damage(damage_array)  # Damage zombies
+        self.zombies.get_damage(dmg_arr)  # Damage zombies
+        self.zombies.get_shield_damage(shield_dmg_arr)  # Damage zombies
 
         # Second timer
         self.p['timer2'] -= np.where(self.p['timer2'] > 0, dt, 0)
+        did_act2 = np.zeros(self.p.shape, dtype=np.bool_)
 
         # Puff-shroom
         dying_puff = (self.p['type'] == P.PUFFSHROOM) & (self.p['timer2'] <= 0)
         self.p['special_state'] += np.where(dying_puff, 1, 0)
-        self.p['timer2'] += np.where(dying_puff & (self.p['special_state'] < 3), self.p['cooldown2'], 0)
         self.plants.remove(dying_puff & (self.p['special_state'] >= 3))
+        did_act2 |= dying_puff & (self.p['special_state'] < 3)
 
         # Sun-shroom
         grow_sun = (self.p['type'] == P.SUNSHROOM) & (self.p['timer2'] <= 0) & (self.p['special_state'] < 2)
         self.p['special_state'] += np.where(grow_sun, 1, 0)
         self.p['sun_prod'] += np.where(grow_sun, 25, 0)
-        self.p['timer2'] += np.where(grow_sun & (self.p['special_state'] == 1), 72, 0)
+        self.p['cooldown'] = np.where(grow_sun & (self.p['special_state'] == 2), 34, self.p['cooldown'])
+        self.p['cooldown2'] = np.where(grow_sun & (self.p['special_state'] == 1), 36, self.p['cooldown2'])
+        did_act2 |= grow_sun
 
-        return damage_array
+        self.p['timer2'] += np.where(did_act2, self.p['cooldown2'], 0)
+
+        return dmg_arr + shield_dmg_arr
     
-    def update_single_hitters(self, acting: np.ndarray, damage_array: np.ndarray, did_act: np.ndarray):
+    def update_single_hitters(self, acting: np.ndarray, dmg_arr: np.ndarray, shield_dmg_arr: np.ndarray, did_act: np.ndarray):
         single_hitters = acting & (self.p['atk_mode'] == 0)
         for row, pcol in np.argwhere(single_hitters):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
@@ -292,12 +299,14 @@ class PvZGame:
             valid_target = (self.z[row]['type'] > 0) & (dist > 0) & (dist < atk_limit + 0.5)
             if valid_target.any():
                 to_hit = np.argmin(np.where(valid_target, self.z[row]['x'], np.inf))
-                damage_array[row, to_hit] += PLANTS[ptype]['damage']
                 if self.z[row, to_hit]['shield_health'] == 0:
                     self.z[row, to_hit]['slow_timer'] = max(self.z[row, to_hit]['slow_timer'], PLANTS[ptype]['slow_dur'])
+                    dmg_arr[row, to_hit] += PLANTS[ptype]['damage']
+                else:
+                    shield_dmg_arr[row, to_hit] += PLANTS[ptype]['damage']
                 did_act[row, pcol] = True
 
-    def update_aoe_atk(self, acting: np.ndarray, damage_array: np.ndarray, did_act: np.ndarray):
+    def update_aoe_atk(self, acting: np.ndarray, dmg_arr: np.ndarray, shield_dmg_arr: np.ndarray, did_act: np.ndarray):
         aoe_attack = acting & (self.p['atk_mode'] == 1)
         for row, pcol in np.argwhere(aoe_attack):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
@@ -309,9 +318,9 @@ class PvZGame:
             tr, tc = np.where(valid_target)
             
             if tr.size:
-                np.add.at(damage_array, (tr + z_start, tc), PLANTS[ptype]['damage'])
-                did_act[row, pcol] = True
-            elif self.p[row, pcol]['instant']:
+                np.add.at(dmg_arr, (tr + z_start, tc), PLANTS[ptype]['damage'])
+                np.add.at(shield_dmg_arr, (tr + z_start, tc), PLANTS[ptype]['damage'])
+            if tr.size or self.p[row, pcol]['instant']:
                 did_act[row, pcol] = True
         
     def select_plant(self, idx: int) -> bool:

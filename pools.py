@@ -158,13 +158,15 @@ class ZombiePool:
     def get_damage(self, damage_array: npt.NDArray[np.float32]):
         if not damage_array.any():
             return
-        remaining_dmg = np.maximum(damage_array - self.state['shield_health'], 0)
-        self.state['health'] -= np.where(
-            self.state['shield_health'] <= 0, damage_array, 
-            np.where(remaining_dmg >= self.state['health'], self.state['health'], 0)
-            )
-        self.state['shield_health'] = np.maximum(self.state['shield_health'] - damage_array, 0)
+        self.state['health'] = np.maximum(self.state['health'] - damage_array, 0)
         self.remove(self.state['health'] <= 0)
+
+
+    def get_shield_damage(self, damage_array: npt.NDArray[np.float32]):
+        if not damage_array.any():
+            return
+        self.state['shield_health'] = np.maximum(self.state['shield_health'] - damage_array, 0)
+
 
     def remove(self, mask: Union[npt.NDArray[np.bool_], tuple[int, ...], tuple[npt.NDArray, ...]]):
         if isinstance(mask, np.ndarray) and not mask.any():

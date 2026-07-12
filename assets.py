@@ -6,7 +6,8 @@ import pygame
 from pools import PLANTS, ZOMBIES
 
 
-IMG_SIZES = {'misc': {'lawnmower': (87, -1), 'shovel': (60, -1), 'seedpacket': (-1, 58), 'sun': (56, -1)},
+IMG_SIZES = {'misc': {'lawnmower': (87, -1), 'shovel': (60, -1), 'seedpacket': (-1, 58), 'sun_icon': (56, -1),
+                      'sun_small': (35, -1),'sun': (53, -1),'sun_large': (70, -1),},
              'zombies': {'basic': (70, -1), 'basic2': (70, -1), 'flag': (100, -1), 'unknownz': (70, -1),
                          'conehead': (70, -1), 'conehead2': (70, -1), 'conehead3': (70, -1),
                          'polevault': (-1, 114), 'polevault2': (-1, 114), 'bucket': (70, -1), 'bucket2': (70, -1), 'bucket3': (70, -1),
@@ -65,6 +66,7 @@ PBAR_MARGIN = 5
 
 SEED_START_X = 6
 SEED_START_Y = 69
+SEED_ICON_SIZE = (60, 52)
 
 ZOMBIE_X_OFFSET = 30
 ZOMBIE_Y_OFFSET = 72
@@ -80,7 +82,7 @@ OVERLAY_BLACK = (0, 0, 0, 85)
 HALF_BLACK = (0, 0, 0, 128)
 OVERLAY_WHITE = (255, 255, 255, 85)
 OVERLAY_BLUE = (20, 40, 100, 85)
-NIGHT_BLUE = (10, 20, 50, 140)
+NIGHT_BLUE = (10, 20, 50, 170)
 LIGHT_GREEN = (80, 245, 50)
 
 
@@ -117,7 +119,13 @@ for path in Path('assets').rglob('*.*'):
         IMGS[f"{name}_cool"] = cool_overlay
 
     if dir == 'plants' and name.isalpha():
-        IMGS[f"seed_{name}"] = pygame.transform.scale_by(img, min(60 / img.width, 52 / img.height))
+        new_w, new_h = SEED_ICON_SIZE
+        if (w_scale := new_w / img.width) < (h_scale := new_h / img.height):
+            new_h = img.height * w_scale
+        else:
+            new_w = img.width * h_scale
+
+        IMGS[f"seed_{name}"] = pygame.transform.smoothscale(img, (new_w, new_h))
 
 
 SUN_TXT_BOX = pygame.Surface((97, 28), pygame.SRCALPHA)
