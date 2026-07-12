@@ -7,16 +7,17 @@ from game_logic import LevelConfig, PvZGame
 from pools import PLANTS, ZOMBIES
 
 
-IMG_SIZES = {'misc': {'lawnmower': (-1, 77), 'shovel': (60, -1), 'seedpacket': (-1, 58), 'sun': (56, -1)},
-             'zombies': {'basic': (70, -1), 'basic2': (70, -1), 'flag': (80, -1), 'unknownz': (70, -1),
+IMG_SIZES = {'misc': {'lawnmower': (87, -1), 'shovel': (60, -1), 'seedpacket': (-1, 58), 'sun': (56, -1)},
+             'zombies': {'basic': (70, -1), 'basic2': (70, -1), 'flag': (100, -1), 'unknownz': (70, -1),
                          'conehead': (70, -1), 'conehead2': (70, -1), 'conehead3': (70, -1),
                          'polevault': (-1, 114), 'polevault2': (70, 114), 'bucket': (70, -1), 'bucket2': (70, -1), 'bucket3': (70, -1), 
                          'newspaper': (-1, 112), 'newspaper2': (-1, 112),'newspaper3': (-1, 112),'newspaper4': (-1, 112), 
                           'screendoor': (-1, 112), 'screendoor2': (-1, 112), 'screendoor3': (-1, 112),
                           'football': (-1, 112), 'football2': (-1, 112), 'football3': (-1, 112), 'football4': (-1, 112),},
-             'plants': {'sunflower': (-1, 75), 'wallnut': (-1, 75), 'wallnut2': (-1, 75), 'wallnut3': (-1, 75),
-                        'peashooter': (-1, 75), 'cherrybomb': (-1, 75), 'potatomine': (70, -1), 'potatomine2': (70, -1), 
-                        'snowpea': (-1, 75), 'chomper': (70, -1), 'chomper2': (70, -1), 'repeater': (-1, 75), 'unknownp': (-1, 75)}}
+             'plants': {'peashooter': (70, -1), 'unknownp': (70, -1), 'sunflower': (70, -1), 'cherrybomb': (-1, 75), 
+                        'wallnut': (-1, 75), 'wallnut2': (-1, 75), 'wallnut3': (-1, 75), 
+                        'potatomine': (70, -1), 'potatomine2': (70, -1), 'snowpea': (70, -1),  
+                        'chomper': (70, -1), 'chomper2': (70, -1),'repeater': (70, -1)}}
 HEALTH_TEXTURES = {'wallnut': {2667: 'wallnut2', 1333: 'wallnut3'},
                    'basic': {190: 'basic', 100: 'basic2'}, 
                    'newspaper': {290: 'newspaper2', 240: 'newspaper3', 190: 'newspaper4'},
@@ -31,21 +32,21 @@ STATE_TEXTURES = {'polevault': {1: 'polevault2'}}
 ZOMB_NAMES = np.char.decode(ZOMBIES['name'], 'utf-8')
 PLANT_NAMES = np.char.decode(PLANTS['name'], 'utf-8')
 
-WIDTH = 1065
+WIDTH = 800
 HEIGHT = 600
 FPS = 60
 
-TILE_W = 76
-TILE_H = 91
+TILE_W = 71
+TILE_H = 85
 
-GRID_START_X = 358
-GRID_START_Y = 84
+GRID_START_X = 139
+GRID_START_Y = 116
 GRID_ROWS = 5
 GRID_COLS = 9
 
-LAWN_POS = pygame.Vector2(-178, -150)
-LAWN_MOWER_POS = pygame.Vector2(255, 102)
-SHOVEL_POS = pygame.Vector2(978, 537)
+LAWN_POS = pygame.Vector2(-362, -102)
+LAWN_MOWER_POS = pygame.Vector2(46, 131)
+SHOVEL_POS = pygame.Vector2(705, 537)
 GRID_LINE_COLOR = 'black'
 
 SUN_DISPLAY_POS = pygame.Vector2(91, 24)
@@ -53,13 +54,17 @@ SUN_FONT_SIZE = 24
 SUN_FONT_TYPE = 'AgencyFB'
 SUN_FONT_COLOR = 'white'
 
+PROG_BAR_X = 225
+PROG_BAR_Y = 10
+PROG_BAR_W = 200
+
 SEED_START_X = 6
 SEED_START_Y = 69
 
 ZOMBIE_X_OFFSET = 35
-ZOMBIE_Y_OFFSET = 85
-PLANT_X_OFFSET = 75
-PLANT_Y_OFFSET = 80
+ZOMBIE_Y_OFFSET = 72
+PLANT_X_OFFSET = 70
+PLANT_Y_OFFSET = 63
 
 COST_FONT_SIZE = 24
 COST_FONT_TYPE = 'AgencyFB'
@@ -67,6 +72,7 @@ COST_FONT_COLOR = 'black'
 
 OVERLAY_BLACK = (0, 0, 0, 85)
 OVERLAY_WHITE = (255, 255, 255, 85)
+LIGHT_GREEN = (80, 245, 50)
 
 
 pygame.init()
@@ -106,7 +112,11 @@ for path in Path('assets').rglob('*.*'):
 
 
 SUN_TXT_BOX = pygame.Surface((97, 28), pygame.SRCALPHA)
-pygame.draw.rect(SUN_TXT_BOX, (0, 0, 0, 170), SUN_TXT_BOX.get_rect(), border_radius=6)
+pygame.draw.rect(SUN_TXT_BOX, (0, 0, 0, 128), SUN_TXT_BOX.get_rect(), border_radius=6)
+
+PROGRESS_BAR = pygame.Surface((210, 25), pygame.SRCALPHA)
+pygame.draw.rect(PROGRESS_BAR, (0, 0, 0, 128), PROGRESS_BAR.get_rect(), border_radius=6)
+pygame.draw.rect(PROGRESS_BAR, (0, 0, 0, 0), ((5, 5), (PROG_BAR_W, 15)))
 
 SEED_DARK_OVERLAY = pygame.Surface(IMGS["seedpacket"].size, pygame.SRCALPHA)
 SEED_LIGHT_OVERLAY = pygame.Surface(IMGS["seedpacket"].size, pygame.SRCALPHA)
@@ -125,15 +135,27 @@ is_shovel = False
 img_reported_missing = []
 
 
-def render_misc(sun: int, lawn_mowers: np.ndarray[tuple[int]]):
+def render_misc(sun: int, lvl_prog: float, n_flags: int, lawn_mowers: np.ndarray[tuple[int]]):
     sun_txt = SUN_FONT.render(str(sun), True, SUN_FONT_COLOR)
     sun_txt_rect = sun_txt.get_rect(center=SUN_DISPLAY_POS)
+
     to_blit = [
         (IMGS['shovel'], SHOVEL_POS),
         (SUN_TXT_BOX, (31, 10)),
         (IMGS['sun'], (11, -2)),
         (sun_txt, sun_txt_rect)
     ]
+
+    if lvl_prog > 0:
+        bar_len = round(lvl_prog * PROG_BAR_W)
+        pygame.draw.rect(PROGRESS_BAR, LIGHT_GREEN, (((5 + PROG_BAR_W - bar_len), 5), (bar_len, 15)))
+        flag_blits = [(PROGRESS_BAR, (PROG_BAR_X, PROG_BAR_Y))]
+        for i in range(n_flags):
+            flag_x = PROG_BAR_X + round(PROG_BAR_W * i / n_flags)
+            flag_y = 3 if (i / n_flags) >= (1 - lvl_prog) else 10
+            flag_blits.append((IMGS['f'], (flag_x, flag_y)))
+        flag_blits.append(((IMGS['bar_marker'], (PROG_BAR_X + PROG_BAR_W - bar_len, PROG_BAR_Y))))
+        to_blit.extend(flag_blits)
 
     if is_shovel:
         to_blit.append((SHOVEL_OVERLAY, SHOVEL_POS))
@@ -316,7 +338,7 @@ def play(game_engine: PvZGame):
         SCREEN.blit(IMGS['lawn'], LAWN_POS)
         # draw_grid()
 
-        to_blit = render_misc(game_engine.sun, game_engine.lawn_mowers)
+        to_blit = render_misc(game_engine.sun, game_engine.prog, game_engine.lvlconfig.n_flags, game_engine.lawn_mowers)
         to_blit.extend(render_seedbank(game_engine.seed_bank, game_engine.sun, game_engine.selected_plant_idx))
         to_blit.extend(render_plants(game_engine.p, plant_dmg_arr))
         to_blit.extend(render_zombies(game_engine.z, zombie_dmg_arr))

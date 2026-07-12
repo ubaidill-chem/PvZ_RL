@@ -176,6 +176,7 @@ class PvZGame:
         self.sun = min(self.sun, MAX_SUN_STORAGE)
 
     def update_spawn(self, dt: float):
+        self.prog = self.upcoming_wave / self.lvlconfig.n_waves
         if self.upcoming_wave == self.lvlconfig.n_waves:
             if not self.z['type'].any():
                 print("Win!!!")
