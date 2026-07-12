@@ -20,6 +20,7 @@ PLANTS = np.zeros(np.max(plants_df['type'] + 1), dtype=[
         ('single_use', 'b1'),
         ('slow_dur', 'f4'),
         ('atk_range', 'i4'),
+        ('cooldown2', 'i4'),
         ]
     )
 
@@ -54,7 +55,10 @@ class PlantGrid:
                 ('atk_mode', 'i4'),
                 ('instant', 'b1'),
                 ('single_use', 'b1'),
-                ('timer', 'f4')
+                ('cooldown2', 'f4'),
+                ('timer', 'f4'),
+                ('timer2', 'f4'),
+                ('special_state', 'i4'),
             ]
         )
     
@@ -82,7 +86,10 @@ class PlantGrid:
             pstate['atk_mode'],
             pstate['instant'],
             pstate['single_use'],
-            init_cooldown  # discounted cooldown first time
+            pstate['cooldown2'],
+            init_cooldown,  # discounted cooldown first time
+            pstate['cooldown2'],
+            0               
         )
         return True
 

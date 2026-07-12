@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import NamedTuple, Optional
+from typing import Literal, NamedTuple, Optional
 
 import numpy as np
 
@@ -17,10 +17,16 @@ POLE_VAULT_JUMP_DISTANCE = 1.0  # distance pole vault zombies jump per action
 MAX_SUN_STORAGE = 9900  # cap on sun that can be stored
 SPAWN_OFFSET_RANGE = 0.2  # spawn position random offset range (+)
 
+
 class Z(IntEnum):
     FLAG_ZOMBIE = 2
     POLE_VAULT = 5
     NEWSPAPER = 6
+
+
+class P(IntEnum):
+    PUFFSHROOM = 9
+    SUNSHROOM = 10
 
 
 class Wave(NamedTuple):
@@ -54,7 +60,7 @@ class LevelConfig:
     n_cols: int = 9
     lawn_mowers: int = 1
     init_sun: int = 50
-    sun_cooldown: float = 10.0
+    sun_cooldown: float | Literal['night'] = 10.0
     sun_value: int = 50
 
     def __post_init__(self):
@@ -69,6 +75,7 @@ class LevelConfig:
         
         self.p_init = self.p_init / init_sum
         self.p_fin = self.p_fin / fin_sum
+
 
     def spawn_roster(self, seed: Optional[int] = None) -> list[Wave]:
         wave_nums = np.arange(self.n_waves)
@@ -139,7 +146,8 @@ class PvZGame:
         self.z[:] = 0
 
         self.seed_bank['timer'] = self.seed_timers_init
-        self.sun_timer: float = self.lvlconfig.sun_cooldown
+        if self.lvlconfig.sun_cooldown != 'night':
+            self.sun_timer: float = self.lvlconfig.sun_cooldown
         self.selected_plant_idx = None
 
         self.spawn_roster = self.lvlconfig.spawn_roster()
@@ -169,6 +177,9 @@ class PvZGame:
         )
 
     def update_sky_sun(self, dt: float):
+        if self.lvlconfig.sun_cooldown == 'night':
+            return
+        
         self.sun_timer -= dt
         if self.sun_timer <= 0:
             self.sun += self.lvlconfig.sun_value
@@ -239,7 +250,7 @@ class PvZGame:
         return False, damage_to_plants
 
     def update_plants(self, dt: float) -> np.ndarray:
-        self.p['timer'] -= np.where(self.p['timer'] > 0, dt, 0)
+        self.p['timer'] -= np.where(self.p['timer'] > 0, dt, 0)        
         acting = self.p['timer'] <= 0
         did_act = np.zeros(self.p.shape, dtype=np.bool_)
         damage_array = np.zeros(self.z.shape, dtype=np.float32)
@@ -254,6 +265,22 @@ class PvZGame:
         self.p['timer'] += np.where(did_act, self.p['cooldown'], 0)
         self.plants.remove(did_act & (self.p['instant'] | self.p['single_use']))  # Remove single-use plants
         self.zombies.get_damage(damage_array)  # Damage zombies
+
+        # Second timer
+        self.p['timer2'] -= np.where(self.p['timer2'] > 0, dt, 0)
+
+        # Puff-shroom
+        dying_puff = (self.p['type'] == P.PUFFSHROOM) & (self.p['timer2'] <= 0)
+        self.p['special_state'] += np.where(dying_puff, 1, 0)
+        self.p['timer2'] += np.where(dying_puff & (self.p['special_state'] < 3), self.p['cooldown2'], 0)
+        self.plants.remove(dying_puff & (self.p['special_state'] >= 3))
+
+        # Sun-shroom
+        grow_sun = (self.p['type'] == P.SUNSHROOM) & (self.p['timer2'] <= 0) & (self.p['special_state'] < 2)
+        self.p['special_state'] += np.where(grow_sun, 1, 0)
+        self.p['sun_prod'] += np.where(grow_sun, 25, 0)
+        self.p['timer2'] += np.where(grow_sun & (self.p['special_state'] == 1), 72, 0)
+
         return damage_array
     
     def update_single_hitters(self, acting: np.ndarray, damage_array: np.ndarray, did_act: np.ndarray):
