@@ -15,11 +15,11 @@ PLANTS = np.zeros(np.max(plants_df['type'] + 1), dtype=[
         ('seed_recharge', 'f4'),
         ('sun_prod', 'i4'),
         ('atk_mode', 'i4'),  # 0 = Single-hit, 1 = Area-of-Effect, -1 = No attack
-        ('aoe_rad', 'u4'),
+        ('range_front', 'u4'),
+        ('range_back', 'u4'),
+        ('range_side', 'u4'),
         ('instant', 'b1'),
-        ('single_use', 'b1'),
         ('slow_dur', 'f4'),
-        ('atk_range', 'i4'),
         ('cooldown2', 'i4'),
         ]
     )
@@ -36,6 +36,7 @@ ZOMBIES = np.zeros(np.max(zombies_df['type'] + 1), dtype=[
         ('speed', 'f4'),
         ('damage', 'f4'),
         ('special_speed', 'f4'),
+        ('cooldown', 'f4'),
         ]
     )
 
@@ -54,7 +55,6 @@ class PlantGrid:
                 ('sun_prod', 'i4'),
                 ('atk_mode', 'i4'),
                 ('instant', 'b1'),
-                ('single_use', 'b1'),
                 ('cooldown2', 'f4'),
                 ('timer', 'f4'),
                 ('timer2', 'f4'),
@@ -85,11 +85,10 @@ class PlantGrid:
             pstate['sun_prod'],
             pstate['atk_mode'],
             pstate['instant'],
-            pstate['single_use'],
             pstate['cooldown2'],
             init_cooldown,  # discounted cooldown first time
             pstate['cooldown2'],
-            0               
+            0
         )
         return True
 
@@ -121,11 +120,13 @@ class ZombiePool:
                 ('is_moving', 'b1'),
                 ('slow_timer', 'f4'),
                 ('special_state', 'i4'),
-                ('special_speed', 'f4')
+                ('special_speed', 'f4'),
+                ('cooldown', 'f4'),
+                ('special_timer', 'f4'),
             ]
         )
 
-    def spawn(self, row: int, ztype: int, x_pos: float = 0.0):
+    def spawn(self, ztype: int, row: int, x_pos: float):
         if ztype <= 0 or ztype >= len(ZOMBIES):
             print(f"Zombie type {ztype} does not exist")
             return False
@@ -141,7 +142,7 @@ class ZombiePool:
 
         zstate = ZOMBIES[ztype]
         self.state[row, empty[0]] = (
-            self.ncols - 0.5 + x_pos,
+            x_pos,
             ztype,
             zstate['health'],
             zstate['shield_health'],
@@ -152,6 +153,8 @@ class ZombiePool:
             0.0,
             0,
             zstate['special_speed'],
+            zstate['cooldown'],
+            zstate['cooldown']
         )
         return True
 

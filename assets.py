@@ -8,29 +8,33 @@ from pools import PLANTS, ZOMBIES
 
 IMG_SIZES = {'misc': {'lawnmower': (87, -1), 'shovel': (60, -1), 'seedpacket': (-1, 58), 'sun_icon': (56, -1),
                       'sun_small': (35, -1),'sun': (53, -1),'sun_large': (70, -1),},
-             'zombies': {'basic': (70, -1), 'basic2': (70, -1), 'flag': (100, -1), 'unknownz': (70, -1),
+             'zombies': {'basic': (70, -1), 'basic2': (70, -1), 'flag': (100, -1), 'flag2': (100, -1), 'unknownz': (70, -1),
                          'conehead': (70, -1), 'conehead2': (70, -1), 'conehead3': (70, -1),
-                         'polevault': (-1, 114), 'polevault2': (-1, 114), 'bucket': (70, -1), 'bucket2': (70, -1), 'bucket3': (70, -1),
+                         'polevault': (-1, 114), 'polevault2': (-1, 114), 
+                         'bucket': (70, -1), 'bucket2': (70, -1), 'bucket3': (70, -1),
                          'newspaper': (-1, 112), 'newspaper2': (-1, 112),'newspaper3': (-1, 112),'newspaper4': (-1, 112),
                          'screendoor': (-1, 112), 'screendoor2': (-1, 112), 'screendoor3': (-1, 112),
-                         'football': (-1, 112), 'football2': (-1, 112), 'football3': (-1, 112), 'football4': (-1, 112),},
+                         'football': (-1, 112), 'football2': (-1, 112), 'football3': (-1, 112), 'football4': (-1, 112),
+                         'disco': (100, -1), 'disco2': (100, -1), 'backup': (-1, 112)},
              'plants': {'peashooter': (70, -1), 'unknownp': (70, -1), 'sunflower': (70, -1), 'cherrybomb': (-1, 75),
                         'wallnut': (-1, 75), 'wallnut2': (-1, 75), 'wallnut3': (-1, 75),
                         'potatomine': (70, -1), 'potatomine2': (70, -1), 'snowpea': (70, -1),
                         'chomper': (70, -1), 'chomper2': (70, -1), 'repeater': (70, -1),
                         'puffshroom': (35, -1), 'puffshroom2': (35, -1), 'puffshroom3': (35, -1),
-                        'sunshroom': (25, -1), 'sunshroom2': (42, -1), 'sunshroom3': (70, -1)}}
+                        'sunshroom': (25, -1), 'sunshroom2': (42, -1), 'sunshroom3': (70, -1),
+                        'fumeshroom': (70, -1), 'scaredy': (60, -1), 'scaredy2': (60, -1)}}
 HEALTH_TEXTURES = {'wallnut': {2667: 'wallnut2', 1333: 'wallnut3'},
-                   'basic': {190: 'basic', 100: 'basic2'},
+                   'basic': {190: 'basic', 100: 'basic2'}, 'flag': {190: 'flag', 100: 'flag2'},
                    'newspaper': {290: 'newspaper2', 240: 'newspaper3', 190: 'newspaper4'},
                    'conehead': {440: 'conehead2', 310: 'conehead3', 190: 'basic', 100: 'basic2'},
                    'bucket': {940: 'bucket2', 600: 'bucket3', 190: 'basic', 100: 'basic2'},
                    'screendoor': {940: 'screendoor2', 600: 'screendoor3', 190: 'basic', 100: 'basic2'},
                    'football': {940: 'football2', 190: 'football3', 100: 'football4'}}
 INERT_TEXTURES = {'potatomine': 'potatomine2', 'chomper': 'chomper2'}
-STATE_TEXTURES = {'polevault': {1: 'polevault2'},
+STATE_TEXTURES = {'polevault': {1: 'polevault2'}, 'disco': {0: 'disco2'}, 
                   'puffshroom': {1: 'puffshroom2', 2: 'puffshroom3'},
-                  'sunshroom': {1: 'sunshroom2', 2: 'sunshroom3'}}
+                  'sunshroom': {1: 'sunshroom2', 2: 'sunshroom3'},
+                  'scaredy': {1: 'scaredy2'}}
 
 
 ZOMB_NAMES = np.char.decode(ZOMBIES['name'], 'utf-8')
@@ -40,13 +44,15 @@ WIDTH = 800
 HEIGHT = 600
 FPS = 60
 
-TILE_W = 71
-TILE_H = 85
-
 GRID_START_X = 139
 GRID_START_Y = 116
+GRID_END_X = 778
+GRID_END_Y = 541
+
 GRID_ROWS = 5
 GRID_COLS = 9
+TILE_W = round((GRID_END_X - GRID_START_X) / GRID_COLS)
+TILE_H = round((GRID_END_Y - GRID_START_Y) / GRID_ROWS)
 
 LAWN_POS = pygame.Vector2(-362, -102)
 LAWN_MOWER_POS = pygame.Vector2(46, 131)

@@ -26,7 +26,7 @@ def process_clicks(game_engine: PvZGame, x: int, y: int):
 
     seed_w, seed_h = IMGS["seedpacket"].size
     n_seeds = game_engine.seed_bank.shape[0]
-    if (0 <= (x - SEED_START_X) <= seed_w) and (0 <= (y - SEED_START_Y) <= seed_h * n_seeds):
+    if (0 <= (x - SEED_START_X) <= seed_w) and (0 <= (y - SEED_START_Y) < seed_h * n_seeds):
         # Clicked seed slot
         is_shovel = False
         idx = (y - SEED_START_Y) // seed_h
@@ -77,7 +77,9 @@ def play(game_engine: PvZGame):
 
 
 if __name__ == '__main__':
-    p_fin = np.array([0, 1, 0, 1/2, 1/2, 1/4, 1/2, 1/4, 1/7])
-    lvlconfig = LevelConfig(list(range(3, 11)), 5, np.array([0, 1]), p_fin, sun_cooldown='night')
+    plants = [9, 10, 11, 13, 3, 4, 6, 8]
+    p_init = np.array([0, 1])
+    p_fin = np.array([0, 1, 0, 1/2, 1/2, 1/4, 1/2, 1/4, 1/7, 1/5])
+    lvlconfig = LevelConfig(plants, 5, p_init, p_fin, sun_cooldown='night')
     game_engine = PvZGame(lvlconfig)
     play(game_engine)

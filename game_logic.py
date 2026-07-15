@@ -15,23 +15,26 @@ POLE_VAULT_JUMP_DISTANCE = 1.0  # distance pole vault zombies jump per action
 
 # Zombie Movement Constants
 MAX_SUN_STORAGE = 9900  # cap on sun that can be stored
-SPAWN_OFFSET_RANGE = 0.2  # spawn position random offset range (+)
+SPAWN_OFFSET_RANGE = 0.4  # spawn position random offset range (+)
 
 
 class Z(IntEnum):
     FLAG_ZOMBIE = 2
     POLE_VAULT = 5
     NEWSPAPER = 6
+    DISCO = 9
+    BACKUP = 10
 
 
 class P(IntEnum):
     PUFFSHROOM = 9
     SUNSHROOM = 10
+    SCAREDY = 13
 
 
 class Wave(NamedTuple):
-    rows: np.ndarray[tuple[int], np.dtype[np.int64]]
     zombies: np.ndarray[tuple[int], np.dtype[np.uint32]]
+    rows: np.ndarray[tuple[int], np.dtype[np.int64]]
     offsets: np.ndarray[tuple[int], np.dtype[np.float64]]
 
 
@@ -52,7 +55,7 @@ class LevelConfig:
     p_init: np.ndarray[tuple[int], np.dtype[np.float64]]
     p_fin: np.ndarray[tuple[int], np.dtype[np.float64]]
     flag_freq: int = 8
-    wave_delay: float = 30.0
+    wave_delay: float = 25.0
     wave_size_init: float = 0.6
     wave_size_ramp: float = 0.4
     flag_multi: float = 2.5
@@ -96,7 +99,8 @@ class LevelConfig:
                 zombies = np.concatenate(([Z.FLAG_ZOMBIE], rng.choice(ZOMBIES['type'], max(k-1, 1), p=p)))
             else:
                 zombies = rng.choice(ZOMBIES['type'], k, p=p)
-            wave = Wave(rng.choice(self.n_rows, k), zombies, rng.uniform(0, SPAWN_OFFSET_RANGE, size=k))
+
+            wave = Wave(zombies, rng.choice(self.n_rows, k), rng.uniform(0, SPAWN_OFFSET_RANGE, size=k))
             roster.append(wave)
         return roster
 
@@ -196,12 +200,18 @@ class PvZGame:
 
         self.spawn_timer -= dt
         if self.spawn_timer <= 0 or (not self.z['type'].any() and self.upcoming_wave > 0):
-            for row, ztype, offset in zip(*self.spawn_roster[self.upcoming_wave]):
-                self.zombies.spawn(int(row), int(ztype), float(offset))
+            for ztype, row, offset in zip(*self.spawn_roster[self.upcoming_wave]):
+                self.zombies.spawn(int(ztype), int(row), self.n_cols - 0.5 + float(offset))
             self.spawn_timer = self.lvlconfig.wave_delay
             self.upcoming_wave += 1
 
     def update_zombies(self, dt: float) -> tuple[bool, np.ndarray[tuple[int, int]]]:
+        # Update timer
+        self.z['special_timer'] = np.maximum(self.z['special_timer'] - dt, 0)
+        updating = self.z['special_timer'] <= 0
+        self.update_disco(updating)
+        self.z['special_timer'] += np.where(updating, self.z['cooldown'], 0)
+
         # Anger newspaper
         to_anger = (self.z['type'] == Z.NEWSPAPER) & (self.z['shield_health'] <= 0)
         self.z['special_state'] = np.where(to_anger, 1, self.z['special_state'])
@@ -250,8 +260,10 @@ class PvZGame:
         return False, damage_to_plants
 
     def update_plants(self, dt: float) -> np.ndarray:
+        # First timer
         self.p['timer'] -= np.where(self.p['timer'] > 0, dt, 0)        
         acting = self.p['timer'] <= 0
+        
         did_act = np.zeros(self.p.shape, dtype=np.bool_)
         dmg_arr = np.zeros(self.z.shape, dtype=np.float32)
         shield_dmg_arr = np.zeros(self.z.shape, dtype=np.float32)
@@ -264,27 +276,17 @@ class PvZGame:
         did_act |= (self.p['sun_prod'] > 0) & acting
 
         self.p['timer'] += np.where(did_act, self.p['cooldown'], 0)
-        self.plants.remove(did_act & (self.p['instant'] | self.p['single_use']))  # Remove single-use plants
+        self.plants.remove(did_act & self.p['instant'] > 0)  # Remove single-use plants
         self.zombies.get_damage(dmg_arr)  # Damage zombies
         self.zombies.get_shield_damage(shield_dmg_arr)  # Damage zombies
 
         # Second timer
         self.p['timer2'] -= np.where(self.p['timer2'] > 0, dt, 0)
+        acting2 = self.p['timer2'] <= 0
         did_act2 = np.zeros(self.p.shape, dtype=np.bool_)
 
-        # Puff-shroom
-        dying_puff = (self.p['type'] == P.PUFFSHROOM) & (self.p['timer2'] <= 0)
-        self.p['special_state'] += np.where(dying_puff, 1, 0)
-        self.plants.remove(dying_puff & (self.p['special_state'] >= 3))
-        did_act2 |= dying_puff & (self.p['special_state'] < 3)
-
-        # Sun-shroom
-        grow_sun = (self.p['type'] == P.SUNSHROOM) & (self.p['timer2'] <= 0) & (self.p['special_state'] < 2)
-        self.p['special_state'] += np.where(grow_sun, 1, 0)
-        self.p['sun_prod'] += np.where(grow_sun, 25, 0)
-        self.p['cooldown'] = np.where(grow_sun & (self.p['special_state'] == 2), 34, self.p['cooldown'])
-        self.p['cooldown2'] = np.where(grow_sun & (self.p['special_state'] == 1), 36, self.p['cooldown2'])
-        did_act2 |= grow_sun
+        self.update_puff_shroom(acting2, did_act2)
+        self.update_sun_shroom(acting2, did_act2)
 
         self.p['timer2'] += np.where(did_act2, self.p['cooldown2'], 0)
 
@@ -294,7 +296,10 @@ class PvZGame:
         single_hitters = acting & (self.p['atk_mode'] == 0)
         for row, pcol in np.argwhere(single_hitters):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
-            atk_limit = PLANTS[ptype]['atk_range'] or np.inf
+            if self.is_scared_scaredy(int(ptype), row, pcol):
+                continue
+            
+            atk_limit = PLANTS[ptype]['range_front'] or np.inf
             dist = self.z[row]['x'] - pcol
             valid_target = (self.z[row]['type'] > 0) & (dist > 0) & (dist < atk_limit + 0.5)
             if valid_target.any():
@@ -310,18 +315,66 @@ class PvZGame:
         aoe_attack = acting & (self.p['atk_mode'] == 1)
         for row, pcol in np.argwhere(aoe_attack):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
-            aoe_rad = int(PLANTS[ptype]['aoe_rad'])
-            z_start = max(row - aoe_rad, 0)
-            z_stop = min(row + aoe_rad + 1, self.n_rows)
+            range_front = int(PLANTS[ptype]['range_front'])
+            range_back = int(PLANTS[ptype]['range_back'])
+            range_side = int(PLANTS[ptype]['range_side'])            
+
+            z_start = max(row - range_side, 0)
+            z_stop = min(row + range_side + 1, self.n_rows)
             zrows = slice(z_start, z_stop)
-            valid_target = (self.z[zrows]['type'] > 0) & (np.abs(self.z[zrows]['x'] - pcol) < (aoe_rad + 0.5))
+            dist = self.z[zrows]['x'] - pcol
+
+            valid_target = (self.z[zrows]['type'] > 0) & ((dist > -(range_back + 0.5)) | (dist < range_front + 0.5))
             tr, tc = np.where(valid_target)
             
             if tr.size:
                 np.add.at(dmg_arr, (tr + z_start, tc), PLANTS[ptype]['damage'])
                 np.add.at(shield_dmg_arr, (tr + z_start, tc), PLANTS[ptype]['damage'])
-            if tr.size or self.p[row, pcol]['instant']:
+            if tr.size or self.p[row, pcol]['instant'] == 2:
                 did_act[row, pcol] = True
+
+    def update_puff_shroom(self, acting2: np.ndarray, did_act2: np.ndarray):
+        dying_puff = (self.p['type'] == P.PUFFSHROOM) & acting2
+        self.p['special_state'] += np.where(dying_puff, 1, 0)
+        self.plants.remove(dying_puff & (self.p['special_state'] >= 3))
+        did_act2 |= dying_puff & (self.p['special_state'] < 3)
+
+    def update_sun_shroom(self, acting2: np.ndarray, did_act2: np.ndarray):
+        grow_sun = (self.p['type'] == P.SUNSHROOM) & acting2 & (self.p['special_state'] < 2)
+        self.p['special_state'] += np.where(grow_sun, 1, 0)
+        self.p['sun_prod'] += np.where(grow_sun, 25, 0)
+        self.p['cooldown'] = np.where(grow_sun & (self.p['special_state'] == 2), 34, self.p['cooldown'])
+        self.p['cooldown2'] = np.where(grow_sun & (self.p['special_state'] == 1), 36, self.p['cooldown2'])
+        did_act2 |= grow_sun
+
+    def is_scared_scaredy(self, ptype: int, row: int, pcol: int):
+        if ptype == P.SCAREDY:
+            zrows = slice(max(row-1, 0), min(row+2, self.n_rows))
+            is_zombie_nearby = np.any((self.z[zrows]['type'] > 0) & (np.abs(self.z[zrows]['x'] - pcol) < 1.5))
+            self.p[row, pcol]['special_state'] = int(is_zombie_nearby)
+            return is_zombie_nearby
+
+    def update_disco(self, updating: np.ndarray):
+        disco_spawn = (self.z['type'] == Z.DISCO) & updating
+        self.z['special_state'] += np.where(disco_spawn, 1, 0)
+        for row, col in np.argwhere(disco_spawn):  # TODO: Vectorize
+            x = float(self.z[row, col]['x'])
+            round_x = round(x)
+            is_front_backup = self._is_zombie_at(Z.BACKUP, row, round_x-1)
+            is_back_backup = self._is_zombie_at(Z.BACKUP, row, round_x+1)
+            is_top_backup = self._is_zombie_at(Z.BACKUP, row-1, round_x) if row > 0 else True
+            is_bottom_backup = self._is_zombie_at(Z.BACKUP, row+1, round_x) if row < self.n_rows -1 else True
+            if is_front_backup and is_back_backup and is_top_backup and is_bottom_backup:
+                continue
+            self.zombies.spawn(Z.BACKUP, row, x-1)
+            self.zombies.spawn(Z.BACKUP, row, x+1)
+            if row > 0:
+                self.zombies.spawn(Z.BACKUP, row-1, x)
+            if row < self.n_rows -1:
+                self.zombies.spawn(Z.BACKUP, row+1, x)
+
+    def _is_zombie_at(self, ztype: int, row: int, col: int):
+        return np.any((self.z[row]['type'] == ztype) & (np.round(self.z[row]['x']) == col))
         
     def select_plant(self, idx: int) -> bool:
         self.deselect_plant()
@@ -341,11 +394,11 @@ class PvZGame:
         if idx is None:
             return False, 0
         ptype = int(self.seed_bank[idx]['type'])
+        self.deselect_plant()
         if self.plants.place(row, col, ptype):
             sun_spent = self.seed_bank[idx]['cost']
             self.sun -= sun_spent
             self.seed_bank[idx]['timer'] = self.seed_bank[idx]['recharge']
-            self.deselect_plant()
             return True, sun_spent
         return False, 0
     
