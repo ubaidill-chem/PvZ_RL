@@ -15,9 +15,9 @@ PLANTS = np.zeros(np.max(plants_df['type'] + 1), dtype=[
         ('seed_recharge', 'f4'),
         ('sun_prod', 'i4'),
         ('atk_mode', 'i4'),  # 0 = Single-hit, 1 = Area-of-Effect, -1 = No attack
-        ('range_front', 'u4'),
-        ('range_back', 'u4'),
-        ('range_side', 'u4'),
+        ('range_front', 'i4'),
+        ('range_back', 'i4'),
+        ('range_side', 'i4'),
         ('instant', 'b1'),
         ('slow_dur', 'f4'),
         ('freeze_dur', 'f4'),
@@ -63,7 +63,7 @@ class PlantGrid:
             ]
         )
     
-    def place(self, row: int, col: int, ptype: int, init_cooldown_discount: float = 0.3):
+    def place(self, ptype: int, row: int, col: int, init_cooldown_discount: float = 0.3):
         if ptype <= 0 or ptype >= PLANTS.size:
             print(f"Plant type {ptype} does not exist")
             return False

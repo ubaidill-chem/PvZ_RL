@@ -117,7 +117,7 @@ def render_plants(plant_state: np.ndarray[tuple[int, int]], damage_array: np.nda
         if damage_array[row, col] > 0:
             plants.append((IMGS[f"{name}_hit"], rect))
 
-        if p['timer'] > 0.2:
+        if p['timer'] > 0.1:
             continue
 
         if (sp := p['sun_prod']) > 0:

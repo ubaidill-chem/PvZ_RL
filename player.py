@@ -77,7 +77,7 @@ def play(game_engine: PvZGame):
 
 
 if __name__ == '__main__':
-    plants = [9, 10, 11, 13, 3, 4, 6, 8]
+    plants = [9, 10, 11, 13, 3, 4, 6, 14]
     p_init = np.array([0, 1])
     p_fin = np.array([0, 1, 0, 1/2, 1/2, 1/4, 1/2, 1/4, 1/7, 1/5])
     lvlconfig = LevelConfig(plants, 5, p_init, p_fin, sun_cooldown='night', wave_size_ramp=0.7)

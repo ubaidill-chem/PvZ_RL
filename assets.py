@@ -11,7 +11,7 @@ IMG_SIZES = {'misc': {'lawnmower': (87, -1), 'shovel': (60, -1), 'seedpacket': (
              'zombies': {'basic': (70, -1), 'basic2': (70, -1), 'flag': (100, -1), 'flag2': (100, -1), 'unknownz': (70, -1),
                          'conehead': (70, -1), 'conehead2': (70, -1), 'conehead3': (70, -1),
                          'polevault': (-1, 114), 'polevault2': (-1, 114), 
-                         'bucket': (70, -1), 'bucket2': (70, -1), 'bucket3': (70, -1),
+                         'bucket': (75, -1), 'bucket2': (75, -1), 'bucket3': (75, -1),
                          'newspaper': (-1, 112), 'newspaper2': (-1, 112),'newspaper3': (-1, 112),'newspaper4': (-1, 112),
                          'screendoor': (-1, 112), 'screendoor2': (-1, 112), 'screendoor3': (-1, 112),
                          'football': (-1, 112), 'football2': (-1, 112), 'football3': (-1, 112), 'football4': (-1, 112),
