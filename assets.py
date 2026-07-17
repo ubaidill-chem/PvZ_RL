@@ -22,7 +22,7 @@ IMG_SIZES = {'misc': {'lawnmower': (87, -1), 'shovel': (60, -1), 'seedpacket': (
                         'chomper': (70, -1), 'chomper2': (70, -1), 'repeater': (70, -1),
                         'puffshroom': (35, -1), 'puffshroom2': (35, -1), 'puffshroom3': (35, -1),
                         'sunshroom': (25, -1), 'sunshroom2': (42, -1), 'sunshroom3': (70, -1),
-                        'fumeshroom': (70, -1), 'scaredy': (60, -1), 'scaredy2': (60, -1)}}
+                        'fumeshroom': (70, -1), 'scaredy': (60, -1), 'scaredy2': (60, -1), 'iceshroom': (70, -1)}}
 HEALTH_TEXTURES = {'wallnut': {2667: 'wallnut2', 1333: 'wallnut3'},
                    'basic': {190: 'basic', 100: 'basic2'}, 'flag': {190: 'flag', 100: 'flag2'},
                    'newspaper': {290: 'newspaper2', 240: 'newspaper3', 190: 'newspaper4'},
