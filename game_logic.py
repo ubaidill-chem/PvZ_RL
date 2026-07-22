@@ -3,6 +3,7 @@ from enum import IntEnum
 from typing import Literal, NamedTuple, Optional
 
 import numpy as np
+from numpy.typing import NDArray
 
 from pools import PLANTS, ZOMBIES, PlantGrid, ZombiePool
 
@@ -10,13 +11,13 @@ from pools import PLANTS, ZOMBIES, PlantGrid, ZombiePool
 # Game Mechanics Constants
 EATING_DISTANCE_THRESHOLD = 0.5  # must be closer than 0.5 tiles away to eat
 BITE_RATE_MULTIPLIER = 10  # 10 bites takes the same time as moving 1 tile
-SLOW_SPEED_MULTIPLIER = 0.5  # slowed zombies move at 50% speed
+SLOW_SPEED_MULT = 0.5  # slowed zombies move at 50% speed
 POLE_VAULT_JUMP_DISTANCE = 1.0  # distance pole vault zombies jump per action
 
 # Zombie Movement Constants
 MAX_SUN_STORAGE = 9900  # cap on sun that can be stored
-SPAWN_OFFSET_MIN = 0.4  # spawn position random offset range (+)
-SPAWN_OFFSET_MAX = 1  # spawn position random offset range (+)
+SPAWN_OFFSET_STEP = 0.2
+SPAWN_OFFSET_MAX = 1.0  # spawn position random offset range (+)
 
 
 class Z(IntEnum):
@@ -34,15 +35,15 @@ class P(IntEnum):
 
 
 class Wave(NamedTuple):
-    zombies: np.ndarray[tuple[int], np.dtype[np.uint32]]
-    rows: np.ndarray[tuple[int], np.dtype[np.int64]]
-    offsets: np.ndarray[tuple[int], np.dtype[np.float64]]
+    zombies: NDArray[np.uint32]
+    rows: NDArray[np.int64]
+    offsets: NDArray[np.float64]
 
 
 class StepInfo(NamedTuple):
     lvl_outcome: int
-    zombie_dmg_arr: np.ndarray[tuple[int, int]]
-    plant_dmg_arr: np.ndarray[tuple[int, int]]
+    zombie_dmg_arr: NDArray[np.float64]
+    plant_dmg_arr: NDArray[np.float64]
     sun_gained: int
     zombies_killed: int
     plants_lost: int
@@ -53,8 +54,8 @@ class StepInfo(NamedTuple):
 class LevelConfig:
     plants: list[int]
     n_flags: int
-    p_init: np.ndarray[tuple[int], np.dtype[np.float64]]
-    p_fin: np.ndarray[tuple[int], np.dtype[np.float64]]
+    p_init: NDArray[np.float64]
+    p_fin: NDArray[np.float64]
     flag_freq: int = 8
     wave_delay: float = 25.0
     wave_size_init: float = 0.6
@@ -70,8 +71,8 @@ class LevelConfig:
 
     def __post_init__(self):
         self.n_waves = self.n_flags * self.flag_freq
-        self.p_init = np.pad(self.p_init, (0, ZOMBIES.size - self.p_init.size))
-        self.p_fin = np.pad(self.p_fin, (0, ZOMBIES.size - self.p_fin.size))
+        self.p_init = np.pad(self.p_init, (0, ZOMBIES.size - self.p_init.size - 1))
+        self.p_fin = np.pad(self.p_fin, (0, ZOMBIES.size - self.p_fin.size - 1))
 
         init_sum = float(self.p_init.sum())
         fin_sum = float(self.p_fin.sum())
@@ -81,28 +82,30 @@ class LevelConfig:
         self.p_init = self.p_init / init_sum
         self.p_fin = self.p_fin / fin_sum
 
-
     def spawn_roster(self, seed: Optional[int] = None) -> list[Wave]:
         wave_nums = np.arange(self.n_waves)
         is_flag = (wave_nums + 1) % self.flag_freq == 0
-
-        multiplier = np.where(is_flag, self.flag_multi, 1.0)
-        raw_sizes = (self.wave_size_init + wave_nums * self.wave_size_ramp) * multiplier
-        wave_sizes = np.maximum(raw_sizes.round(), 1)
+        flag_mult = np.where(is_flag, self.flag_multi, 1.0)
+        
+        raw_sizes = (self.wave_size_init + wave_nums * self.wave_size_ramp) * flag_mult
+        wave_sizes = np.maximum(raw_sizes.astype(int), 1)
 
         progress = np.linspace(0.0, 1.0, self.n_waves).reshape(-1, 1)
         probs = (1 - progress) * self.p_init + progress * self.p_fin
 
         rng = np.random.default_rng(seed)
+        ztypes = ZOMBIES[1:]['type']
+        n_spawn_offset_pos = int(SPAWN_OFFSET_MAX // SPAWN_OFFSET_STEP)
+
         roster: list[Wave] = []
         for f, k, p in zip(is_flag, wave_sizes, probs):
-            k = int(k)
+            zombies = rng.choice(ztypes, k, p=p)
+            rows = rng.choice(self.n_rows, k)
+            offsets = rng.choice(n_spawn_offset_pos + 1, size=k) * SPAWN_OFFSET_STEP
             if f:
-                zombies = np.concatenate(([Z.FLAG_ZOMBIE], rng.choice(ZOMBIES['type'], max(k-1, 1), p=p)))
-            else:
-                zombies = rng.choice(ZOMBIES['type'], k, p=p)
-
-            wave = Wave(zombies, rng.choice(self.n_rows, k), rng.uniform(SPAWN_OFFSET_MIN, SPAWN_OFFSET_MAX, size=k))
+                zombies[0] = Z.FLAG_ZOMBIE
+                offsets[0] = 0
+            wave = Wave(zombies, rows, offsets)
             roster.append(wave)
         return roster
 
@@ -129,7 +132,7 @@ def generate_seed_bank(p_types: list[int]):
         
 
 class PvZGame:
-    def __init__(self, lvlconfig: LevelConfig, seed: Optional[int] = None):
+    def __init__(self, lvlconfig: LevelConfig, rng_seed: Optional[int] = None):
         self.lvlconfig = lvlconfig
         self.n_rows = self.lvlconfig.n_rows
         self.n_cols = self.lvlconfig.n_cols
@@ -140,14 +143,14 @@ class PvZGame:
 
         self.plants = PlantGrid(self.n_rows, self.n_cols)
         self.zombies = ZombiePool(self.n_rows, self.n_cols)
-        self.lawn_mowers = np.full(self.n_rows, self.lvlconfig.lawn_mowers)
+        self.lawn_mowers = np.full(shape=self.n_rows, fill_value=self.lvlconfig.lawn_mowers)
 
         self.p = self.plants.state
         self.z = self.zombies.state
         self.row_vect = np.arange(self.n_rows).reshape(-1, 1)
-        self.reset(seed)
+        self.reset(rng_seed)
 
-    def reset(self, seed):
+    def reset(self, rng_seed: Optional[int] = None):
         self.p[:] = 0
         self.z[:] = 0
 
@@ -156,7 +159,7 @@ class PvZGame:
             self.sun_timer: float = self.lvlconfig.sun_cooldown
         self.selected_plant_idx = None
 
-        self.spawn_roster = self.lvlconfig.spawn_roster(seed)
+        self.spawn_roster = self.lvlconfig.spawn_roster(rng_seed)
         self.spawn_timer: float = self.lvlconfig.wave_delay
         self.upcoming_wave: int = 0
 
@@ -171,9 +174,9 @@ class PvZGame:
 
         self.seed_bank['timer'] = np.maximum(self.seed_bank['timer'] - dt, 0)
         self.update_sky_sun(dt)
-        z_dmg_arr = self.update_plants(dt)
         is_win = self.update_spawn(dt)
         is_lose, p_dmg_arr = self.update_zombies(dt)
+        z_dmg_arr = self.update_plants(dt)
         
         return StepInfo(
             lvl_outcome = 1 if is_win else (-1 if is_lose else 0),  # TODO: Replace with Enum
@@ -211,8 +214,18 @@ class PvZGame:
             self.upcoming_wave += 1
 
     def update_zombies(self, dt: float) -> tuple[bool, np.ndarray[tuple[int, int]]]:
+        # Update slow and freeze
+        self.z['slow_timer'] -= np.where(self.z['slow_timer'] > 0, dt, 0)
+        slowed = self.z['slow_timer'] > 0
+        self.z['speed_mult'] = np.where(slowed, SLOW_SPEED_MULT, 1.0)
+
+        # Update freeze
+        self.z['freeze_timer'] -= np.where(self.z['freeze_timer'] > 0, dt, 0)
+        frozen = self.z['freeze_timer'] > 0
+        self.z['speed_mult'] = np.where(frozen, 0.0, self.z['speed_mult'])
+
         # Update timer
-        self.z['special_timer'] -= dt
+        self.z['special_timer'] -= np.where(frozen, 0.0, dt)
         updating = self.z['special_timer'] <= 0
         self.update_disco(updating)
         self.z['special_timer'] += np.where(updating, self.z['cooldown'], 0)
@@ -224,25 +237,14 @@ class PvZGame:
         # Update special speeds
         self.z['speed'] = np.where(self.z['special_state'] == 0, self.z['speed'], self.z['special_speed'])
 
-        # Update slow and freeze
-        self.z['slow_timer'] -= np.where(self.z['slow_timer'] > 0, dt, 0)
-        slowed = self.z['slow_timer'] > 0
-        self.z['speed_mult'] = np.where(slowed, SLOW_SPEED_MULTIPLIER, 1.0)
-
-        # Update freeze
-        self.z['freeze_timer'] -= np.where(self.z['freeze_timer'] > 0, dt, 0)
-        freezed = self.z['freeze_timer'] > 0
-        self.z['speed_mult'] = np.where(freezed, 0.0, self.z['speed_mult'])
-
         # Move zombies
         real_speed = self.z['speed'] * self.z['speed_mult']
-        deltax = np.where(self.z['is_moving'], real_speed * dt, 0.0)
+        deltax = np.where(self.z['is_eating'], 0.0, real_speed * dt)
         self.z['x'] -= deltax
         
         trespassed = (self.z['type'] > 0) & (self.z['x'] <= -0.5)
         if trespassed.any():
-            rows = np.unique(np.where(trespassed)[0])
-            for r in rows:
+            for r in np.unique(np.where(trespassed)[0]):
                 if self.lawn_mowers[r] > 0:
                     self.lawn_mowers[r] -= 1
                     self.zombies.remove((np.array([r]),))
@@ -254,8 +256,7 @@ class PvZGame:
         int_xs = np.clip(np.floor(self.z['x']), 0, self.n_cols - 1).astype(int)
         is_facing_plant = (self.z['type'] > 0) & (self.p[self.row_vect, int_xs]['type'] > 0) & (self.z['x'] - int_xs < EATING_DISTANCE_THRESHOLD)        
         is_running_pole = (self.z['type'] == Z.POLE_VAULT) & (self.z['special_state'] == 0)
-        is_eating = is_facing_plant & ~is_running_pole
-        self.z['is_moving'] = ~is_eating
+        self.z['is_eating'] = is_facing_plant & ~is_running_pole
 
         # Pole vault jumps
         to_jump = is_facing_plant & is_running_pole
@@ -265,8 +266,8 @@ class PvZGame:
         # Damage plants
         damage_from_zomb = real_speed * dt * self.z['damage'] * BITE_RATE_MULTIPLIER
         damage_to_plants = np.zeros(self.p.shape, dtype=np.float32)
-        rows, _ = np.where(is_eating)
-        np.add.at(damage_to_plants, (rows, int_xs[is_eating]), damage_from_zomb[is_eating])
+        rows, _ = np.where(self.z['is_eating'])
+        np.add.at(damage_to_plants, (rows, int_xs[self.z['is_eating']]), damage_from_zomb[self.z['is_eating']])
         self.plants.get_damage(damage_to_plants)
         return False, damage_to_plants
 
@@ -303,7 +304,7 @@ class PvZGame:
 
         return dmg_arr + shield_dmg_arr
     
-    def update_single_hitters(self, acting: np.ndarray, dmg_arr: np.ndarray, shield_dmg_arr: np.ndarray, did_act: np.ndarray):
+    def update_single_hitters(self, acting: NDArray, dmg_arr: NDArray, shield_dmg_arr: NDArray, did_act: NDArray):
         single_hitters = acting & (self.p['atk_mode'] == 0)
         for row, pcol in np.argwhere(single_hitters):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
@@ -319,13 +320,14 @@ class PvZGame:
                 to_hit = np.argmin(np.where(valid_target, self.z[row]['x'], np.inf))
                 if self.z[row, to_hit]['shield_health'] == 0:
                     dmg_arr[row, to_hit] += PLANTS[ptype]['damage']
-                    self.z[row, to_hit]['slow_timer'] = max(self.z[row, to_hit]['slow_timer'], PLANTS[ptype]['slow_dur'])
-                    self.z[row, to_hit]['freeze_timer'] = max(self.z[row, to_hit]['freeze_timer'], PLANTS[ptype]['freeze_dur'])
+                    eff_slow_dur = PLANTS[ptype]['freeze_dur'] + PLANTS[ptype]['slow_dur']
+                    self.z[row, to_hit]['slow_timer'] = max(eff_slow_dur, self.z[row, to_hit]['slow_timer'])
+                    self.z[row, to_hit]['freeze_timer'] = max(PLANTS[ptype]['freeze_dur'], self.z[row, to_hit]['freeze_timer'])
                 else:
                     shield_dmg_arr[row, to_hit] += PLANTS[ptype]['damage']
                 did_act[row, pcol] = True
 
-    def update_aoe_atk(self, acting: np.ndarray, dmg_arr: np.ndarray, shield_dmg_arr: np.ndarray, did_act: np.ndarray):
+    def update_aoe_atk(self, acting: NDArray, dmg_arr: NDArray, shield_dmg_arr: NDArray, did_act: NDArray):
         aoe_attack = acting & (self.p['atk_mode'] == 1)
         for row, pcol in np.argwhere(aoe_attack):  # TODO: Vectorize
             ptype = self.p[row, pcol]['type']
@@ -341,22 +343,23 @@ class PvZGame:
                 np.add.at(dmg_arr, (tr + z_start, tc), PLANTS[ptype]['damage'])
                 np.add.at(shield_dmg_arr, (tr + z_start, tc), PLANTS[ptype]['damage'])
 
-            np.maximum(PLANTS[ptype]['slow_dur'], self.z[zrows]['slow_timer'], out=self.z[zrows]['slow_timer'], where=valid_target)
+            eff_slow_dur = PLANTS[ptype]['freeze_dur'] + PLANTS[ptype]['slow_dur']
+            np.maximum(eff_slow_dur, self.z[zrows]['slow_timer'], out=self.z[zrows]['slow_timer'], where=valid_target)
             np.maximum(PLANTS[ptype]['freeze_dur'], self.z[zrows]['freeze_timer'], out=self.z[zrows]['freeze_timer'], where=valid_target)
 
             if tr.size or self.p[row, pcol]['instant'] == 2:
                 did_act[row, pcol] = True
 
-    def update_puff_shroom(self, acting2: np.ndarray, did_act2: np.ndarray):
+    def update_puff_shroom(self, acting2: NDArray, did_act2: NDArray):
         dying_puff = (self.p['type'] == P.PUFFSHROOM) & acting2
         self.p['special_state'] += np.where(dying_puff, 1, 0)
         self.plants.remove(dying_puff & (self.p['special_state'] >= 3))
         did_act2 |= dying_puff & (self.p['special_state'] < 3)
 
-    def update_sun_shroom(self, acting2: np.ndarray, did_act2: np.ndarray):
+    def update_sun_shroom(self, acting2: NDArray, did_act2: NDArray):
         grow_sun = (self.p['type'] == P.SUNSHROOM) & acting2 & (self.p['special_state'] < 2)
         self.p['special_state'] += np.where(grow_sun, 1, 0)
-        self.p['sun_prod'] += np.where(grow_sun, 25, 0)
+        self.p['sun_prod'] += np.where(grow_sun, self.lvlconfig.sun_value // 2, 0)
         self.p['cooldown'] = np.where(grow_sun & (self.p['special_state'] == 2), 34, self.p['cooldown'])
         self.p['cooldown2'] = np.where(grow_sun & (self.p['special_state'] == 1), 36, self.p['cooldown2'])
         did_act2 |= grow_sun
@@ -368,27 +371,28 @@ class PvZGame:
             self.p[row, pcol]['special_state'] = int(is_zombie_nearby)
             return is_zombie_nearby
 
-    def update_disco(self, updating: np.ndarray):
+    def update_disco(self, updating: NDArray):
         disco_spawn = (self.z['type'] == Z.DISCO) & updating
-        self.z['special_state'] += np.where(disco_spawn, 1, 0)
+        self.z['special_state'] = np.where(disco_spawn, 1, self.z['special_state'])
+        self.z['cooldown'] = np.where(disco_spawn & (self.z['special_state'] == 1), 4, self.z['cooldown'])
         for row, col in np.argwhere(disco_spawn):  # TODO: Vectorize
             x = float(self.z[row, col]['x'])
             
-            is_front_backup = np.any(self.zombies_at(Z.BACKUP, row, x))
+            is_front_backup = np.any(self.zombies_at(Z.BACKUP, row, x-1))
             if not is_front_backup:
-                self.zombies.spawn(Z.BACKUP, row, x-1)
+                self.zombies.spawn(Z.BACKUP, row, x-1, slow_timer=self.z[row, col]['slow_timer'])
 
-            is_back_backup = np.any(self.zombies_at(Z.BACKUP, row, x))
+            is_back_backup = np.any(self.zombies_at(Z.BACKUP, row, x+1))
             if not is_back_backup:
-                self.zombies.spawn(Z.BACKUP, row, x+1)
+                self.zombies.spawn(Z.BACKUP, row, x+1, slow_timer=self.z[row, col]['slow_timer'])
 
             is_top_backup = np.any(self.zombies_at(Z.BACKUP, row-1, x)) if row > 0 else True
             if not is_top_backup:
-                self.zombies.spawn(Z.BACKUP, row-1, x)
+                self.zombies.spawn(Z.BACKUP, row-1, x, slow_timer=self.z[row, col]['slow_timer'])
 
             is_bottom_backup = np.any(self.zombies_at(Z.BACKUP, row+1, x)) if row < self.n_rows - 1 else True
             if not is_bottom_backup:
-                self.zombies.spawn(Z.BACKUP, row+1, x)
+                self.zombies.spawn(Z.BACKUP, row+1, x, slow_timer=self.z[row, col]['slow_timer'])
 
     def slice_rows(self, row: int, up: int, down: int):
         return slice(max(row - up, 0), min(row + down + 1, self.n_rows))
@@ -398,7 +402,7 @@ class PvZGame:
         return (self.n_rows if range_name.endswith('side') else np.inf) if rang == -1 else rang
 
     def zombies_at(self, ztype: int, row: int | slice, col_start: float, col_end: Optional[float] = None):
-        valid_type: np.ndarray = (self.z[row]['type'] == ztype) if ztype >= 0 else (self.z[row]['type'] > 0)
+        valid_type: NDArray = (self.z[row]['type'] == ztype) if ztype >= 0 else (self.z[row]['type'] > 0)
         if col_end is None:
             col_start -= 0.5
             col_end = col_start + 0.5

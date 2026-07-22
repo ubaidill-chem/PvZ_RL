@@ -1,7 +1,8 @@
 import numpy as np
 
-from assets import (CLOCK, FPS, GRID_COLS, GRID_ROWS, GRID_START_X, GRID_START_Y, IMGS, LAWN_POS, NIGHT_OVERLAY, SCREEN, 
-                    SEED_START_X, SEED_START_Y, SHOVEL_POS, TILE_H, TILE_W)
+import assets
+from assets import (CLOCK, FPS, GRID_START_X, GRID_START_Y, IMGS, LAWN_POS, NIGHT_OVERLAY, SCREEN, SEED_START_X, 
+                    SEED_START_Y, SHOVEL_POS)
 from game_logic import LevelConfig, PvZGame
 from render import render_misc, render_plants, render_seedbank, render_zombies
 
@@ -13,10 +14,13 @@ is_shovel = False
 
 def process_clicks(game_engine: PvZGame, x: int, y: int):
     global is_shovel
-    if (GRID_START_X <= x <= GRID_START_X + TILE_W * GRID_COLS) and (GRID_START_Y <= y <= GRID_START_Y + TILE_H * GRID_ROWS):
+
+    x_in_lawn = (GRID_START_X <= x <= GRID_START_X + assets.TILE_W * assets.GRID_COLS)
+    y_in_lawn = (GRID_START_Y <= y <= GRID_START_Y + assets.TILE_H * assets.GRID_ROWS)
+    if x_in_lawn and y_in_lawn:
         # Clicked lawn
-        lawn_row = (y - GRID_START_Y) // TILE_H
-        lawn_col = (x - GRID_START_X) // TILE_W
+        lawn_row = (y - GRID_START_Y) // assets.TILE_H
+        lawn_col = (x - GRID_START_X) // assets.TILE_W
         if is_shovel:
             game_engine.shovel_plant(lawn_row, lawn_col)
         else:
@@ -45,6 +49,7 @@ def process_clicks(game_engine: PvZGame, x: int, y: int):
 
 
 def play(game_engine: PvZGame):
+    assets.set_grid_size(game_engine.lvlconfig.n_rows, game_engine.lvlconfig.n_cols)
     dt = 0
     running = True
     while running:
@@ -78,8 +83,9 @@ def play(game_engine: PvZGame):
 
 if __name__ == '__main__':
     plants = [9, 10, 11, 13, 3, 4, 6, 14]
-    p_init = np.array([0, 1])
-    p_fin = np.array([0, 1, 0, 1/2, 1/2, 1/4, 1/2, 1/4, 1/7, 1/5])
-    lvlconfig = LevelConfig(plants, 5, p_init, p_fin, sun_cooldown='night', wave_size_ramp=0.7)
+    p_init = np.array([1])
+    p_fin = np.array([1, 0, 1/2, 1/2, 1/4, 1/2, 1/4, 1/7, 1/5])
+    # p_init = p_fin
+    lvlconfig = LevelConfig(plants, 1, p_init, p_fin, sun_cooldown='night', wave_size_ramp=0.7)
     game_engine = PvZGame(lvlconfig)
     play(game_engine)

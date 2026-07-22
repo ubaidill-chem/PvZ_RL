@@ -23,12 +23,13 @@ IMG_SIZES = {'misc': {'lawnmower': (87, -1), 'shovel': (60, -1), 'seedpacket': (
                         'puffshroom': (35, -1), 'puffshroom2': (35, -1), 'puffshroom3': (35, -1),
                         'sunshroom': (25, -1), 'sunshroom2': (42, -1), 'sunshroom3': (70, -1),
                         'fumeshroom': (70, -1), 'scaredy': (60, -1), 'scaredy2': (60, -1), 'iceshroom': (70, -1)}}
+SHIELD_HEALTH_TEXTURES = {'newspaper': {100: 'newspaper2', 50: 'newspaper3'},
+                          'screendoor': {750: 'screendoor2', 400: 'screendoor3'}}
 HEALTH_TEXTURES = {'wallnut': {2667: 'wallnut2', 1333: 'wallnut3'},
-                   'basic': {190: 'basic', 100: 'basic2'}, 'flag': {190: 'flag', 100: 'flag2'},
-                   'newspaper': {290: 'newspaper2', 240: 'newspaper3', 190: 'newspaper4'},
+                   'basic': {100: 'basic2'}, 'flag': {100: 'flag2'},
                    'conehead': {440: 'conehead2', 310: 'conehead3', 190: 'basic', 100: 'basic2'},
                    'bucket': {940: 'bucket2', 600: 'bucket3', 190: 'basic', 100: 'basic2'},
-                   'screendoor': {940: 'screendoor2', 600: 'screendoor3', 190: 'basic', 100: 'basic2'},
+                   'newspaper': {190: 'newspaper4'}, 'screendoor': {190: 'basic', 100: 'basic2'},
                    'football': {940: 'football2', 190: 'football3', 100: 'football4'}}
 INERT_TEXTURES = {'potatomine': 'potatomine2', 'chomper': 'chomper2'}
 STATE_TEXTURES = {'polevault': {1: 'polevault2'}, 'disco': {0: 'disco2'}, 
@@ -44,20 +45,15 @@ WIDTH = 800
 HEIGHT = 600
 FPS = 60
 
+LAWN_POS = pygame.Vector2(-362, -102)
+LAWN_MOWER_X = 46
+SHOVEL_POS = pygame.Vector2(705, 537)
+GRID_LINE_COLOR = 'black'
+
 GRID_START_X = 139
 GRID_START_Y = 116
 GRID_END_X = 778
 GRID_END_Y = 541
-
-GRID_ROWS = 5
-GRID_COLS = 9
-TILE_W = round((GRID_END_X - GRID_START_X) / GRID_COLS)
-TILE_H = round((GRID_END_Y - GRID_START_Y) / GRID_ROWS)
-
-LAWN_POS = pygame.Vector2(-362, -102)
-LAWN_MOWER_POS = pygame.Vector2(46, 131)
-SHOVEL_POS = pygame.Vector2(705, 537)
-GRID_LINE_COLOR = 'black'
 
 SUN_DISPLAY_POS = pygame.Vector2(91, 24)
 SUN_FONT_SIZE = 24
@@ -74,10 +70,10 @@ SEED_START_X = 6
 SEED_START_Y = 69
 SEED_ICON_SIZE = (60, 52)
 
-ZOMBIE_X_OFFSET = 30
-ZOMBIE_Y_OFFSET = 72
-PLANT_X_OFFSET = 35
-PLANT_Y_OFFSET = 63
+ZOMBIE_X_OFFSET = 0.42
+ZOMBIE_Y_OFFSET = 0.85
+PLANT_X_OFFSET = 0.50
+PLANT_Y_OFFSET = 0.75
 
 COST_FONT_SIZE = 24
 COST_FONT_TYPE = 'AgencyFB'
@@ -107,8 +103,8 @@ for path in Path('assets').rglob('*.*'):
     img = pygame.image.load(path).convert_alpha() if ext == 'png' else pygame.image.load(path).convert()
     if size := IMG_SIZES.get(dir, {}).get(name):
         curr_w, curr_h = img.size
-        w = size[0] if size[0] != -1 else round(curr_w / curr_h * size[1])
-        h = size[1] if size[1] != -1 else round(curr_h / curr_w * size[0])
+        w = size[0] if size[0] != -1 else int(curr_w / curr_h * size[1])
+        h = size[1] if size[1] != -1 else int(curr_h / curr_w * size[0])
         img = pygame.transform.scale(img, (w, h))
 
     IMGS[name] = img
@@ -146,13 +142,21 @@ SEED_LIGHT_OVERLAY = pygame.Surface(IMGS["seedpacket"].size, pygame.SRCALPHA)
 SEED_DARK_OVERLAY.fill(OVERLAY_BLACK)
 SEED_LIGHT_OVERLAY.fill(OVERLAY_WHITE)
 
-LAWN_OVERLAY_V = pygame.Surface((TILE_W, TILE_H * GRID_ROWS), pygame.SRCALPHA)
-LAWN_OVERLAY_H = pygame.Surface((TILE_W * GRID_COLS, TILE_H), pygame.SRCALPHA)
-LAWN_OVERLAY_V.fill(OVERLAY_WHITE)
-LAWN_OVERLAY_H.fill(OVERLAY_WHITE)
-
 NIGHT_OVERLAY = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
 NIGHT_OVERLAY.fill(NIGHT_BLUE)
 
 SHOVEL_OVERLAY = pygame.Surface(IMGS["shovel"].size, pygame.SRCALPHA)
 pygame.draw.circle(SHOVEL_OVERLAY, OVERLAY_WHITE, (30, 30), 30)
+
+def set_grid_size(n_rows: int, n_cols: int):
+    global GRID_ROWS, GRID_COLS, TILE_W, TILE_H, LAWN_OVERLAY_V, LAWN_OVERLAY_H
+    GRID_ROWS = n_rows
+    GRID_COLS = n_cols
+
+    TILE_W = int((GRID_END_X - GRID_START_X) / GRID_COLS)
+    TILE_H = int((GRID_END_Y - GRID_START_Y) / GRID_ROWS)
+
+    LAWN_OVERLAY_V = pygame.Surface((TILE_W, TILE_H * GRID_ROWS), pygame.SRCALPHA)
+    LAWN_OVERLAY_H = pygame.Surface((TILE_W * GRID_COLS, TILE_H), pygame.SRCALPHA)
+    LAWN_OVERLAY_V.fill(OVERLAY_WHITE)
+    LAWN_OVERLAY_H.fill(OVERLAY_WHITE)
