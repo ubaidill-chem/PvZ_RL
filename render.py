@@ -1,16 +1,44 @@
-from typing import Optional
-
 import numpy as np
-from numpy.typing import NDArray
 import pygame
+from numpy.typing import NDArray
 
 import assets
 from assets import (
-    COST_FONT, COST_FONT_COLOR, GRID_LINE_COLOR, GRID_START_X, GRID_START_Y, HEALTH_TEXTURES, IMGS, INERT_TEXTURES, 
-    LAWN_MOWER_X, LIGHT_GREEN, PBAR_MARGIN, PLANT_NAMES, PLANT_X_OFFSET, PLANT_Y_OFFSET, PROG_BAR_H, PROG_BAR_W, 
-    PROG_BAR_X, PROG_BAR_Y, PROGRESS_BAR, SCREEN, SEED_DARK_OVERLAY, SEED_LIGHT_OVERLAY, SEED_START_X, SEED_START_Y, 
-    SHIELD_HEALTH_TEXTURES, SHOVEL_OVERLAY, SHOVEL_POS, STATE_TEXTURES, SUN_DISPLAY_POS, SUN_FONT, SUN_FONT_COLOR, 
-    SUN_TXT_BOX, ZOMB_NAMES, ZOMBIE_X_OFFSET, ZOMBIE_Y_OFFSET
+    COST_FONT,
+    COST_FONT_COLOR,
+    GRID_LINE_COLOR,
+    GRID_START_X,
+    GRID_START_Y,
+    HEALTH_TEXTURES,
+    IMGS,
+    INERT_TEXTURES,
+    LAWN_MOWER_X,
+    LIGHT_GREEN,
+    PBAR_MARGIN,
+    PLANT_NAMES,
+    PLANT_X_OFFSET,
+    PLANT_Y_OFFSET,
+    PROG_BAR_H,
+    PROG_BAR_W,
+    PROG_BAR_X,
+    PROG_BAR_Y,
+    PROGRESS_BAR,
+    SCREEN,
+    SEED_DARK_OVERLAY,
+    SEED_LIGHT_OVERLAY,
+    SEED_START_X,
+    SEED_START_Y,
+    SHIELD_HEALTH_TEXTURES,
+    SHOVEL_OVERLAY,
+    SHOVEL_POS,
+    STATE_TEXTURES,
+    SUN_DISPLAY_POS,
+    SUN_FONT,
+    SUN_FONT_COLOR,
+    SUN_TXT_BOX,
+    ZOMB_NAMES,
+    ZOMBIE_X_OFFSET,
+    ZOMBIE_Y_OFFSET,
 )
 
 img_reported_missing = []
@@ -34,7 +62,7 @@ def render_misc(sun: int, lvl_prog: float, n_flags: int, lawn_mowers: NDArray[np
             flag_x = PROG_BAR_X + int(PROG_BAR_W * i / n_flags)
             flag_y = 3 if (i / n_flags) >= (1 - lvl_prog) else 10
             flag_blits.append((IMGS['f'], (flag_x, flag_y)))
-        flag_blits.append(((IMGS['bar_marker'], (PROG_BAR_X + PROG_BAR_W - bar_len, PROG_BAR_Y))))
+        flag_blits.append((IMGS['bar_marker'], (PROG_BAR_X + PROG_BAR_W - bar_len, PROG_BAR_Y)))
         to_blit.extend(flag_blits)
 
     if is_shovel:
@@ -55,7 +83,7 @@ def render_misc(sun: int, lvl_prog: float, n_flags: int, lawn_mowers: NDArray[np
     return to_blit
 
 
-def render_seedbank(seedbank: NDArray[np.void], sun: int, selected_idx: Optional[int]):
+def render_seedbank(seedbank: NDArray[np.void], sun: int, selected_idx: int | None):
     seed_img = IMGS['seedpacket']
     seed_w, seed_h = seed_img.size
     seeds = []
@@ -103,7 +131,7 @@ def render_plants(plant_state: NDArray[np.void], damage_array: NDArray[np.float6
         name = STATE_TEXTURES.get(name, {}).get(int(p['special_state']), name)
 
         health_textures = HEALTH_TEXTURES.get(name, {})
-        if health_textures and (ks := [h for h in health_textures.keys() if p['health'] < h]):
+        if health_textures and (ks := [h for h in health_textures if p['health'] < h]):
             name = health_textures[min(ks)]
 
         if p['timer'] > 0:
@@ -145,7 +173,7 @@ def render_zombies(zomb_state: NDArray[np.void], damage_array: NDArray[np.float6
         health_texture_pack = HEALTH_TEXTURES if z['shield_health'] <= 0 else SHIELD_HEALTH_TEXTURES
         health = z['shield_health'] or z['health']
         health_textures = health_texture_pack.get(name, {})
-        if health_textures and (ks := [h for h in health_textures.keys() if health <= h]):
+        if health_textures and (ks := [h for h in health_textures if health <= h]):
             name = health_textures[min(ks)]
 
         if name not in IMGS:

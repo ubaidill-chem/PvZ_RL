@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -99,7 +97,7 @@ class PlantGrid:
         self.state['health'] -= damage_array
         self.remove(self.state['health'] <= 0)
 
-    def remove(self, mask: Union[npt.NDArray[np.bool_], tuple[int, int], tuple[npt.NDArray, npt.NDArray]]):
+    def remove(self, mask: npt.NDArray[np.bool_] | tuple[int, int] | tuple[npt.NDArray, npt.NDArray]):
         if isinstance(mask, np.ndarray) and not mask.any():
             return
         self.state[mask] = 0
@@ -118,7 +116,7 @@ class ZombiePool:
                 ('speed', 'f4'),
                 ('speed_mult', 'f4'),
                 ('damage', 'f4'),
-                ('is_moving', 'b1'),
+                ('is_eating', 'b1'),
                 ('slow_timer', 'f4'),
                 ('freeze_timer', 'f4'),
                 ('special_state', 'i4'),
@@ -128,7 +126,7 @@ class ZombiePool:
             ]
         )
 
-    def spawn(self, ztype: int, row: int, x_pos: float):
+    def spawn(self, ztype: int, row: int, x_pos: float, **kwargs):
         if ztype <= 0 or ztype >= len(ZOMBIES):
             print(f"Zombie type {ztype} does not exist")
             return False
@@ -159,6 +157,10 @@ class ZombiePool:
             zstate['cooldown'],
             zstate['cooldown']
         )
+
+        for k, v in kwargs.items():
+            self.state[row, empty[0]][k] = v
+
         return True
 
     def get_damage(self, damage_array: npt.NDArray[np.float32]):
@@ -174,7 +176,7 @@ class ZombiePool:
         self.state['shield_health'] = np.maximum(self.state['shield_health'] - damage_array, 0)
 
 
-    def remove(self, mask: Union[npt.NDArray[np.bool_], tuple[int, ...], tuple[npt.NDArray, ...]]):
+    def remove(self, mask: npt.NDArray[np.bool_] | tuple[int, ...] | tuple[npt.NDArray, ...]):
         if isinstance(mask, np.ndarray) and not mask.any():
             return
         self.state[mask] = 0

@@ -1,12 +1,11 @@
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Literal, NamedTuple, Optional
+from typing import Literal, NamedTuple
 
 import numpy as np
 from numpy.typing import NDArray
 
 from pools import PLANTS, ZOMBIES, PlantGrid, ZombiePool
-
 
 # Game Mechanics Constants
 EATING_DISTANCE_THRESHOLD = 0.5  # must be closer than 0.5 tiles away to eat
@@ -82,7 +81,7 @@ class LevelConfig:
         self.p_init = self.p_init / init_sum
         self.p_fin = self.p_fin / fin_sum
 
-    def spawn_roster(self, seed: Optional[int] = None) -> list[Wave]:
+    def spawn_roster(self, seed: int | None = None) -> list[Wave]:
         wave_nums = np.arange(self.n_waves)
         is_flag = (wave_nums + 1) % self.flag_freq == 0
         flag_mult = np.where(is_flag, self.flag_multi, 1.0)
@@ -132,7 +131,7 @@ def generate_seed_bank(p_types: list[int]):
         
 
 class PvZGame:
-    def __init__(self, lvlconfig: LevelConfig, rng_seed: Optional[int] = None):
+    def __init__(self, lvlconfig: LevelConfig, rng_seed: int | None = None):
         self.lvlconfig = lvlconfig
         self.n_rows = self.lvlconfig.n_rows
         self.n_cols = self.lvlconfig.n_cols
@@ -150,7 +149,7 @@ class PvZGame:
         self.row_vect = np.arange(self.n_rows).reshape(-1, 1)
         self.reset(rng_seed)
 
-    def reset(self, rng_seed: Optional[int] = None):
+    def reset(self, rng_seed: int | None = None):
         self.p[:] = 0
         self.z[:] = 0
 
@@ -401,7 +400,7 @@ class PvZGame:
         rang = int(PLANTS[ptype][range_name])
         return (self.n_rows if range_name.endswith('side') else np.inf) if rang == -1 else rang
 
-    def zombies_at(self, ztype: int, row: int | slice, col_start: float, col_end: Optional[float] = None):
+    def zombies_at(self, ztype: int, row: int | slice, col_start: float, col_end: float | None = None):
         valid_type: NDArray = (self.z[row]['type'] == ztype) if ztype >= 0 else (self.z[row]['type'] > 0)
         if col_end is None:
             col_start -= 0.5

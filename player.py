@@ -1,13 +1,22 @@
 import numpy as np
-
-import assets
-from assets import (CLOCK, FPS, GRID_START_X, GRID_START_Y, IMGS, LAWN_POS, NIGHT_OVERLAY, SCREEN, SEED_START_X, 
-                    SEED_START_Y, SHOVEL_POS)
-from game_logic import LevelConfig, PvZGame
-from render import render_misc, render_plants, render_seedbank, render_zombies
-
 import pygame
 
+import assets
+from assets import (
+    CLOCK,
+    FPS,
+    GRID_START_X,
+    GRID_START_Y,
+    IMGS,
+    LAWN_POS,
+    NIGHT_OVERLAY,
+    SCREEN,
+    SEED_START_X,
+    SEED_START_Y,
+    SHOVEL_POS,
+)
+from game_logic import LevelConfig, PvZGame
+from render import render_misc, render_plants, render_seedbank, render_zombies
 
 is_shovel = False
 
@@ -54,9 +63,7 @@ def play(game_engine: PvZGame):
     running = True
     while running:
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 process_clicks(game_engine, *event.pos)
